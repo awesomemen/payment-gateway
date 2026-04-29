@@ -173,6 +173,16 @@ function Wait-AppHealthy([int]$TimeoutSeconds = 180) {
   throw "Application health did not recover within $TimeoutSeconds seconds"
 }
 
+function Restore-AppHealthy([int]$TimeoutSeconds = 90) {
+  try {
+    return Wait-AppHealthy $TimeoutSeconds
+  } catch {
+    Write-Output "Application health did not recover after dependency restart; restarting gateway-app..."
+    docker restart gateway-app | Out-Null
+    return Wait-AppHealthy 180
+  }
+}
+
 function Invoke-MysqlQuery([string]$Sql) {
   return docker exec $MysqlContainer mysql -N -ugateway -pgateway_local_pass -D gateway_db -e $Sql
 }
@@ -229,6 +239,25 @@ function New-ScenarioResult([string]$Name) {
   }
 }
 
+function Test-CodeIn([object]$Body, [string[]]$Codes) {
+  $code = Get-JsonProperty $Body "code"
+  if ($null -eq $code) {
+    return $false
+  }
+  return $Codes -contains [string]$code
+}
+
+function Get-JsonProperty([object]$Object, [string]$Name) {
+  if ($null -eq $Object) {
+    return $null
+  }
+  $property = $Object.PSObject.Properties[$Name]
+  if ($null -eq $property) {
+    return $null
+  }
+  return $property.Value
+}
+
 Write-Output "Checking initial application health..."
 Wait-AppHealthy | Out-Null
 
@@ -253,8 +282,9 @@ $redisScenario.notes += "Redis down probe completed"
 docker start gateway-redis | Out-Null
 Wait-ContainerHealthy "gateway-redis"
 Start-Sleep -Seconds 8
+Restore-AppHealthy | Out-Null
 Write-Output "redis-outage scenario completed."
-$redisScenario.verdict = if ($redisResponse.StatusCode -ge 500 -and $redisResponse.Body.code -eq "INTERNAL_ERROR") { "PASS" } else { "FAIL" }
+$redisScenario.verdict = if ($redisResponse.StatusCode -eq 503 -and (Test-CodeIn $redisResponse.Body @("REDIS_UNAVAILABLE"))) { "PASS" } else { "FAIL" }
 $summary.scenarios += $redisScenario
 Save-Evidence "redis-outage" $redisScenario
 
@@ -272,10 +302,37 @@ $mysqlScenario.notes += "MySQL down probe completed"
 docker start gateway-mysql | Out-Null
 Wait-ContainerHealthy "gateway-mysql" 120
 Start-Sleep -Seconds 15
+Restore-AppHealthy | Out-Null
 Write-Output "mysql-outage scenario completed."
-$mysqlScenario.verdict = if ($mysqlResponse.StatusCode -ge 500 -and $mysqlResponse.Body.code -eq "INTERNAL_ERROR") { "PASS" } else { "FAIL" }
+$mysqlScenario.verdict = if ($mysqlResponse.StatusCode -eq 503 -and (Test-CodeIn $mysqlResponse.Body @("DATABASE_UNAVAILABLE"))) { "PASS" } else { "FAIL" }
 $summary.scenarios += $mysqlScenario
 Save-Evidence "mysql-outage" $mysqlScenario
+
+# Redis + MySQL combined outage
+Write-Output "Running redis-mysql-outage scenario..."
+$redisMysqlScenario = New-ScenarioResult "redis-mysql-outage"
+docker stop gateway-redis | Out-Null
+docker stop gateway-mysql | Out-Null
+Start-Sleep -Seconds 6
+$redisMysqlResponse = Invoke-PaymentCreate "REQ-REDIS-MYSQL-DOWN"
+$redisMysqlScenario.response = @{
+  statusCode = $redisMysqlResponse.StatusCode
+  body = $redisMysqlResponse.Body
+}
+$redisMysqlScenario.notes += "Redis and MySQL down probe completed"
+docker start gateway-mysql | Out-Null
+docker start gateway-redis | Out-Null
+Wait-ContainerHealthy "gateway-mysql" 120
+Wait-ContainerHealthy "gateway-redis"
+Start-Sleep -Seconds 15
+Restore-AppHealthy | Out-Null
+Write-Output "redis-mysql-outage scenario completed."
+$redisMysqlScenario.verdict = if (
+  $redisMysqlResponse.StatusCode -eq 503 -and
+  (Test-CodeIn $redisMysqlResponse.Body @("REDIS_UNAVAILABLE", "DATABASE_UNAVAILABLE"))
+) { "PASS" } else { "FAIL" }
+$summary.scenarios += $redisMysqlScenario
+Save-Evidence "redis-mysql-outage" $redisMysqlScenario
 
 # RocketMQ broker outage with outbox recovery
 Write-Output "Running rocketmq-broker-outage scenario..."
@@ -283,7 +340,8 @@ $brokerScenario = New-ScenarioResult "rocketmq-broker-outage"
 docker stop gateway-rocketmq-broker | Out-Null
 Start-Sleep -Seconds 4
 $brokerResponse = Invoke-PaymentCreate "REQ-BROKER-DOWN"
-$gatewayPaymentId = $brokerResponse.Body.data.gatewayPaymentId
+$brokerData = Get-JsonProperty $brokerResponse.Body "data"
+$gatewayPaymentId = Get-JsonProperty $brokerData "gatewayPaymentId"
 $brokerScenario.createResponse = @{
   statusCode = $brokerResponse.StatusCode
   body = $brokerResponse.Body
@@ -304,12 +362,14 @@ if ($brokerScenario.outboxBeforeRetry -and $brokerScenario.outboxBeforeRetry.Sen
   }
   $brokerScenario.outboxAfterRetry = Get-OutboxRecord $gatewayPaymentId
 }
+$retryData = if ($brokerScenario.retryResponse) { Get-JsonProperty $brokerScenario.retryResponse.body "data" } else { $null }
+$succeededCount = Get-JsonProperty $retryData "succeededCount"
 $brokerScenario.verdict = if (
   $brokerResponse.StatusCode -eq 200 -and
   $brokerScenario.paymentOrder -and
   $brokerScenario.outboxBeforeRetry -and
   $brokerScenario.outboxBeforeRetry.SendStatus -eq 2 -and
-  $brokerScenario.retryResponse.body.data.succeededCount -ge 1 -and
+  $succeededCount -ge 1 -and
   $brokerScenario.outboxAfterRetry.SendStatus -eq 1
 ) { "PASS" } else { "FAIL" }
 $brokerScenario.notes += "Broker down create should still accept and leave a failed outbox record recoverable after broker startup"
@@ -359,10 +419,11 @@ $markdown = @(
 )
 foreach ($scenario in $summary.scenarios) {
   $observation = switch ($scenario.name) {
-    "redis-outage" { "payment create => HTTP $($scenario.response.statusCode) / $($scenario.response.body.code)" }
-    "mysql-outage" { "payment create => HTTP $($scenario.response.statusCode) / $($scenario.response.body.code)" }
+    "redis-outage" { "payment create => HTTP $($scenario.response.statusCode) / $(Get-JsonProperty $scenario.response.body 'code')" }
+    "mysql-outage" { "payment create => HTTP $($scenario.response.statusCode) / $(Get-JsonProperty $scenario.response.body 'code')" }
+    "redis-mysql-outage" { "payment create => HTTP $($scenario.response.statusCode) / $(Get-JsonProperty $scenario.response.body 'code')" }
     "rocketmq-broker-outage" { "create => HTTP $($scenario.createResponse.statusCode); outboxBefore=$($scenario.outboxBeforeRetry.SendStatus); outboxAfter=$($scenario.outboxAfterRetry.SendStatus)" }
-    "seata-outage" { "payment create => HTTP $($scenario.createResponse.statusCode) / $($scenario.createResponse.body.code)" }
+    "seata-outage" { "payment create => HTTP $($scenario.createResponse.statusCode) / $(Get-JsonProperty $scenario.createResponse.body 'code')" }
     default { "n/a" }
   }
   $markdown += "| $($scenario.name) | $($scenario.verdict) | $observation |"

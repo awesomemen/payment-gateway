@@ -19,10 +19,11 @@
 - 本地可靠性套件：
   - `scripts/local-reliability-suite.ps1`
   - 成功证据目录：
-    - `.tmp-reliability/20260424-113208`
+    - `.tmp-reliability/20260429-233650`
   - 摘要结论：
     - `redis-outage => PASS`
     - `mysql-outage => PASS`
+    - `redis-mysql-outage => PASS`
     - `rocketmq-broker-outage => PASS`
     - `seata-outage => REVIEW`
 
@@ -32,7 +33,10 @@
 - Dubbo consumer 不再强制 `injvm=true`
 - 商户验签配置已支持统一 provider 抽象
 - `gateway-security.json` 已进入本地 / docker profile 的 Nacos 导入链路
-- 当前已具备一套可复跑的本地组件故障探针脚本，用于沉淀 Redis / MySQL / RocketMQ Broker / Seata 场景证据
+- 当前已具备一套可复跑的本地组件故障探针脚本，用于沉淀 Redis / MySQL / Redis+MySQL / RocketMQ Broker / Seata 场景证据
+- Redis 和 MySQL 故障现在已收敛为稳定 `503` 基础设施错误码：
+  - Redis: `REDIS_UNAVAILABLE`
+  - MySQL: `DATABASE_UNAVAILABLE`
 
 ## 待补为正式证据的部分
 

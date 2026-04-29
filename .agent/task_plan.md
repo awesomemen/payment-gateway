@@ -104,11 +104,15 @@
   - 完成了商户安全配置的统一 provider 抽象、Nacos 导入链路和 refresh 边界
   - 完成了一组 `docs/delivery/` 交付级文档骨架
   - 完成了一套本地可靠性故障探针脚本，并拿到了 Redis / MySQL / RocketMQ Broker / Seata 的真实运行结论
+- 2026-04-29 进一步前移：
+  - Redis/MySQL 基础设施故障已从 `500 INTERNAL_ERROR` 收敛为稳定 `503` 错误语义
+  - 本地可靠性套件新增 `redis-mysql-outage` 组合故障场景
+  - 最新 Docker 证据目录 `.tmp-reliability/20260429-233650` 显示 Redis / MySQL / Redis+MySQL / RocketMQ Broker 均为 `PASS`，Seata 仍为 `REVIEW`
 - 下一步不再是补脚手架，也不再是继续堆本地 Mock，而是只剩真实交付口径事项：
   - 真实外部下游 provider 契约接入与联调
   - 商户密钥最终托管、轮换与灰度策略定板
   - 正式联调环境端到端证据沉淀
-  - Redis/MySQL/RocketMQ/Seata 跨组件组合异常注入验收与最终语义确认
+  - Seata 故障最终事务语义确认
 
 ## Latest Closure (2026-04-23)
 - Phase 24 is closed: stricter business-level acceptance automation and Docker build determinism.
@@ -257,3 +261,34 @@
 - 已解决：`P2` 通知消费侧在 Docker 运行态反复报 `convert failed / MessageConversionException`。根因是 `PaymentEventConsumer` 使用 `RocketMQListener<Message<String>>`，JSON 消息体在框架层被错误反序列化；现已改为消费原生 `MessageExt` 并手动提取 `keys/body`。
 - 已解决：本轮 `gateway-app` 镜像首次重建时出现 `Invalid or corrupt jarfile /app/app.jar`。根因不是制品损坏，而是把 `mvn package` 与 `docker build` 并行执行，镜像在 jar 尚未写完时复制了半成品；现已改回串行打包后构建。
 - 已解决：本轮 MQ 验收查库时误用了 `gateway_message_consume_record.dead_lettered` 与 `gateway_request_log.status` 旧列名；现已改为当前实际字段 `dead_letter / response_status`。
+## 2026-04-29 Final Delivery Optimization Closure
+
+Status: completed
+
+- Completed repository-side infrastructure outage optimization:
+  - Redis outage returns stable `503 / REDIS_UNAVAILABLE`.
+  - MySQL outage returns stable `503 / DATABASE_UNAVAILABLE`.
+  - Redis + MySQL outage is covered by the local reliability suite.
+- Completed validation:
+  - Targeted web/application/app tests passed.
+  - Full Maven test suite passed.
+  - Docker `gateway-app`, MySQL, Redis, RocketMQ Broker, and Seata are healthy.
+  - Local reliability evidence directory: `.tmp-reliability/20260429-233650`.
+- Completed delivery handoff documentation:
+  - `docs/delivery/final-delivery-decision-checklist.md`.
+  - `docs/delivery/README.md` index updated.
+  - `docs/final-delivery-open-items.md` points remaining items to explicit external inputs.
+- Remaining formal-acceptance blockers:
+  - Real external provider contract and environment.
+  - Real merchant key custody decision.
+  - Payment final state policy.
+  - Refund domain final model.
+  - Seata unavailable policy.
+  - Target-environment evidence package.
+
+Closure checks:
+
+- `git diff --check` passed with only existing Windows line-ending warnings.
+- `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml test -Dsurefire.failIfNoSpecifiedTests=false` passed.
+- `docker compose -f docker/local-compose.yml ps gateway-app mysql redis rocketmq-broker seata` shows all key services healthy.
+- `GET http://localhost:18081/actuator/health` returns `UP`.

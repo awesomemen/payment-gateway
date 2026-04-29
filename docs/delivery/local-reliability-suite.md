@@ -12,8 +12,9 @@
 
 1. `Redis` 掉线时的支付创建探针
 2. `MySQL` 掉线时的支付创建探针
-3. `RocketMQ Broker` 掉线时的支付创建 + Outbox 失败记录 + 服务恢复后重试探针
-4. `Seata` 掉线时的支付创建探针
+3. `Redis + MySQL` 同时掉线时的支付创建组合探针
+4. `RocketMQ Broker` 掉线时的支付创建 + Outbox 失败记录 + 服务恢复后重试探针
+5. `Seata` 掉线时的支付创建探针
 
 注意：
 
@@ -55,12 +56,22 @@
 
 当前已验证的一次成功证据目录：
 
-- `.tmp-reliability/20260424-113208`
+- `.tmp-reliability/20260429-233650`
+
+当前最新结果：
+
+- `redis-outage => PASS`，支付创建返回 `503 / REDIS_UNAVAILABLE`
+- `mysql-outage => PASS`，支付创建返回 `503 / DATABASE_UNAVAILABLE`
+- `redis-mysql-outage => PASS`，支付创建返回 `503 / REDIS_UNAVAILABLE`
+- `rocketmq-broker-outage => PASS`，支付创建仍受理，Outbox 失败态可在 Broker 恢复后重试为已发送
+- `seata-outage => REVIEW`，当前支付创建仍返回 `200 / SUCCESS`
 
 ## 当前脚本内置判断
 
 - `Redis` / `MySQL` 场景：
-  - 重点看系统是否快速失败，而不是静默成功
+  - 重点看系统是否快速失败，并返回稳定基础设施错误码，而不是泛化成 `INTERNAL_ERROR`
+- `Redis + MySQL` 组合场景：
+  - 重点看多组件同时不可用时是否仍快速失败，并落入明确的 Redis 或数据库不可用语义
 - `RocketMQ Broker` 场景：
   - 重点看主单是否仍可受理
   - 同时看 Outbox 是否进入失败态

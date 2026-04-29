@@ -1003,3 +1003,33 @@
 - 已检查 `.gitignore` 覆盖 `target/`、`.tmp-reliability/`、本地 Maven/npm 缓存与 `application-local.yml`。
 - 已做轻量敏感信息扫描，命中项为样例密码、环境变量默认值和源码普通变量名，未发现私钥或真实 token。
 - 已修正 `.serena/memories` 中过期的 Spring Boot 2.7 / 离线 Maven / smoke runner 描述，避免提交错误项目上下文。
+- 继续推进交付前可控优化：
+  - 新增 `REDIS_UNAVAILABLE / DATABASE_UNAVAILABLE / TRANSACTION_COORDINATOR_UNAVAILABLE` 响应码。
+  - `GatewayExceptionHandler` 已把 Redis / 数据库 / Seata 类基础设施异常从泛化 `INTERNAL_ERROR` 收敛为 `503` 基础设施不可用语义。
+  - `PaymentControllerTest` 已补 Redis/MySQL 不可用的 Web 层错误语义测试。
+  - 修正 `BootstrapPaymentCreateApplicationServiceTest` 仍使用旧安全校验器构造器的问题，测试改为通过 `PropertiesMerchantCredentialProvider` 接入当前商户凭据抽象。
+  - `scripts/local-reliability-suite.ps1` 已新增 `redis-mysql-outage` 组合故障场景，并在依赖重启后增加 `gateway-app` 健康恢复兜底。
+  - 定向测试通过：
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-web -am test -Dtest=PaymentControllerTest -Dsurefire.failIfNoSpecifiedTests=false`
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-application -am test -Dtest=BootstrapPaymentCreateApplicationServiceTest -Dsurefire.failIfNoSpecifiedTests=false`
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-app -am test -Dtest=PaymentGatewayApplicationTest -Dsurefire.failIfNoSpecifiedTests=false`
+  - Docker 验证：
+    - `docker compose -f docker/local-compose.yml up -d --build gateway-app` 首次超过 10 分钟超时，但后台 buildx 随后自然完成，新镜像 `8bdc6a962c4b` 创建成功并重建 `gateway-app`。
+    - `GET /actuator/health` 返回 `UP`。
+    - `& .\scripts\local-reliability-suite.ps1` 通过，证据目录 `.tmp-reliability/20260429-233650`。
+  - 最新本地可靠性结果：
+    - `redis-outage => PASS`，`503 / REDIS_UNAVAILABLE`
+    - `mysql-outage => PASS`，`503 / DATABASE_UNAVAILABLE`
+    - `redis-mysql-outage => PASS`，`503 / REDIS_UNAVAILABLE`
+    - `rocketmq-broker-outage => PASS`，支付受理 + Outbox 失败态 + Broker 恢复后重试为已发送
+    - `seata-outage => REVIEW`，当前仍为 `200 / SUCCESS`
+- 最终交付优化收口（2026-04-29）：
+  - 新增 `docs/delivery/final-delivery-decision-checklist.md`，将仓库内已完成交付物与正式用户验收前必须由外部提供的输入拆开。
+  - 更新 `docs/delivery/README.md`，把最终交付决策清单纳入交付文档索引。
+  - 更新 `docs/final-delivery-open-items.md`，将剩余 P0/P1 事项指向明确的真实下游、商户密钥、最终状态、退款模型、Seata 策略和正式证据包准入标准。
+  - 当前交付边界：本地 Docker、自动化测试、可靠性探针和交付文档已完成仓库侧优化；正式用户验收仍依赖真实 provider、正式密钥托管、最终事务/状态策略和目标环境证据。
+  - 收口验证：
+    - `git diff --check` 通过，仅保留 Windows 换行提示。
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml test -Dsurefire.failIfNoSpecifiedTests=false` 通过。
+    - `docker compose -f docker/local-compose.yml ps gateway-app mysql redis rocketmq-broker seata` 显示关键服务 healthy。
+    - `GET http://localhost:18081/actuator/health` 返回 `UP`。

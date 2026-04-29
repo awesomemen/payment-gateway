@@ -20,6 +20,7 @@ import com.example.payment.gateway.observability.payment.PaymentAuditMetricsReco
 import com.example.payment.gateway.security.DefaultPaymentRequestSecurityValidator;
 import com.example.payment.gateway.security.GatewaySecurityProperties;
 import com.example.payment.gateway.security.InMemoryReplayProtectionStore;
+import com.example.payment.gateway.security.PropertiesMerchantCredentialProvider;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
@@ -66,6 +67,7 @@ class BootstrapPaymentCreateApplicationServiceTest {
 
     DefaultPaymentRequestSecurityValidator validator = new DefaultPaymentRequestSecurityValidator(
         properties,
+        new PropertiesMerchantCredentialProvider(properties),
         new InMemoryReplayProtectionStore(Clock.fixed(NOW, ZoneOffset.UTC)),
         Clock.fixed(NOW, ZoneOffset.UTC)
     );

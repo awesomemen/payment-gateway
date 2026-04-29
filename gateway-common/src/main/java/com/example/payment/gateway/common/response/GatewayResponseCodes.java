@@ -5,6 +5,9 @@ public final class GatewayResponseCodes {
   public static final String SUCCESS = "SUCCESS";
   public static final String VALIDATION_ERROR = "VALIDATION_ERROR";
   public static final String INTERNAL_ERROR = "INTERNAL_ERROR";
+  public static final String REDIS_UNAVAILABLE = "REDIS_UNAVAILABLE";
+  public static final String DATABASE_UNAVAILABLE = "DATABASE_UNAVAILABLE";
+  public static final String TRANSACTION_COORDINATOR_UNAVAILABLE = "TRANSACTION_COORDINATOR_UNAVAILABLE";
   public static final String MERCHANT_NOT_FOUND = "MERCHANT_NOT_FOUND";
   public static final String SIGNATURE_INVALID = "SIGNATURE_INVALID";
   public static final String REQUEST_EXPIRED = "REQUEST_EXPIRED";

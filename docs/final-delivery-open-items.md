@@ -30,12 +30,20 @@
 - 交付级文档已补齐一套基础材料，见 `docs/delivery/`
 - 本地组件故障探针已固化为脚本：
   - `scripts/local-reliability-suite.ps1`
-  - 已完成一轮真实 Docker 验证，证据目录为 `.tmp-reliability/20260424-113208`
+  - 已完成新一轮真实 Docker 验证，证据目录为 `.tmp-reliability/20260429-233650`
   - 当前本地结果：
     - `redis-outage => PASS`
     - `mysql-outage => PASS`
+    - `redis-mysql-outage => PASS`
     - `rocketmq-broker-outage => PASS`
     - `seata-outage => REVIEW`
+- Redis/MySQL 基础设施故障语义已优化：
+  - Redis 掉线返回 `503 / REDIS_UNAVAILABLE`
+  - MySQL 掉线返回 `503 / DATABASE_UNAVAILABLE`
+  - Redis + MySQL 同时掉线返回稳定 `503` 基础设施不可用语义
+- 最终交付决策与输入清单已补齐：
+  - `docs/delivery/final-delivery-decision-checklist.md`
+  - 已明确真实下游契约、商户密钥、最终状态、退款模型、Seata 策略和正式证据包的交付准入标准
 
 因此，本清单中的未完成项已经进一步收敛为“真实外部联调物料与最终架构决策”。
 
@@ -47,6 +55,7 @@
 
 - 支付/退款下游默认仍然是本地 sandbox contract
 - 但仓库内已经补齐外部切换能力，不再强依赖本地 `injvm` provider
+- 正式交付所需输入已整理到 `docs/delivery/final-delivery-decision-checklist.md`
 
 未完成内容：
 
@@ -67,6 +76,7 @@
 
 - 当前已补齐统一商户凭据 provider、Nacos 导入链路和动态刷新边界
 - 但真实密钥托管与最终配置源策略还未定板
+- 正式密钥托管、轮换、禁用和审计要求已列入 `docs/delivery/final-delivery-decision-checklist.md`
 
 未完成内容：
 
@@ -83,6 +93,7 @@
 当前状态：
 
 - 本地页面验收已具备，但是真实交付口径下还不够
+- 正式证据包准入标准已整理到 `docs/delivery/final-delivery-decision-checklist.md`
 
 未完成内容：
 
@@ -101,15 +112,16 @@
 当前状态：
 
 - 单点异常和局部恢复链路已具备
-- 已新增本地可靠性脚本并完成一轮真实 Docker 探针
+- 已新增本地可靠性脚本并完成真实 Docker 探针
+- 已覆盖 `Redis`、`MySQL`、`Redis + MySQL`、`RocketMQ Broker`、`Seata` 本地场景
+- `Redis / MySQL / Redis + MySQL / RocketMQ Broker` 当前均为 `PASS`
+- `Seata` 仍为 `REVIEW`，因为是否接受 Seata 掉线仍受理支付需要最终事务策略定板
 
 未完成内容：
 
-- Redis 故障 + 幂等/锁语义联动验证
-- MySQL 故障 + 事务/日志/状态边界验证
-- RocketMQ 故障 + Outbox/消费/重试/死信联动验证
-- Seata 故障 + 事务提交/回滚边界验证
-- 组合场景自动化脚本或明确操作手册
+- 正式联调环境中的同类故障演练
+- Seata 故障 + 事务提交/回滚边界的最终策略确认
+- RocketMQ 消费侧死信在真实外部 provider 场景下的最终证据
 
 为什么是 P1：
 

@@ -9,6 +9,7 @@ import com.example.payment.gateway.application.service.PaymentQueryApplicationSe
 import com.example.payment.gateway.common.exception.GatewayException;
 import com.example.payment.gateway.common.response.GatewayResponseCodes;
 import com.example.payment.gateway.web.advice.GatewayExceptionHandler;
+import java.sql.SQLNonTransientConnectionException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -157,6 +158,53 @@ class PaymentControllerTest {
                 """))
         .andExpect(status().isBadGateway())
         .andExpect(jsonPath("$.code").value(GatewayResponseCodes.DOWNSTREAM_SERVICE_ERROR));
+  }
+
+  @Test
+  void shouldReturnRedisUnavailableWhenInfrastructureRedisFails() throws Exception {
+    given(paymentCreateApplicationService.create(any()))
+        .willThrow(new RuntimeException("Redis connection failure while reading idempotency state"));
+
+    mockMvc.perform(post("/api/v1/payments")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""
+                {
+                  "merchantId": "MCH100001",
+                  "requestId": "REQ-REDIS-DOWN-20260429-0001",
+                  "idempotencyKey": "IDEMP-REDIS-DOWN-20260429-0001",
+                  "amount": 88.50,
+                  "currency": "CNY",
+                  "requestTime": "2026-04-29T04:00:00Z",
+                  "nonce": "nonce-redis-001",
+                  "signature": "demo-signature"
+                }
+                """))
+        .andExpect(status().isServiceUnavailable())
+        .andExpect(jsonPath("$.code").value(GatewayResponseCodes.REDIS_UNAVAILABLE));
+  }
+
+  @Test
+  void shouldReturnDatabaseUnavailableWhenInfrastructureDatabaseFails() throws Exception {
+    given(paymentCreateApplicationService.create(any()))
+        .willThrow(new RuntimeException("Unable to persist payment order",
+            new SQLNonTransientConnectionException("MySQL connection is unavailable")));
+
+    mockMvc.perform(post("/api/v1/payments")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""
+                {
+                  "merchantId": "MCH100001",
+                  "requestId": "REQ-MYSQL-DOWN-20260429-0001",
+                  "idempotencyKey": "IDEMP-MYSQL-DOWN-20260429-0001",
+                  "amount": 88.50,
+                  "currency": "CNY",
+                  "requestTime": "2026-04-29T04:00:00Z",
+                  "nonce": "nonce-mysql-001",
+                  "signature": "demo-signature"
+                }
+                """))
+        .andExpect(status().isServiceUnavailable())
+        .andExpect(jsonPath("$.code").value(GatewayResponseCodes.DATABASE_UNAVAILABLE));
   }
 
   @Test

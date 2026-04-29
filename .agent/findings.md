@@ -1019,3 +1019,30 @@
   - 是否把当前 Redis/MySQL 的 `500 INTERNAL_ERROR` 细化成更明确的稳定错误语义
   - 是否接受 Seata 掉线时仍继续受理的行为
   - 是否补齐真正的跨组件同时故障组合，而不只是单组件探针
+
+## Delivery Optimization Findings (2026-04-29)
+- Redis/MySQL 的泛化 `500 INTERNAL_ERROR` 已收敛：
+  - Redis 故障现在返回 `503 / REDIS_UNAVAILABLE`
+  - MySQL 故障现在返回 `503 / DATABASE_UNAVAILABLE`
+  - Redis + MySQL 同时故障现在返回稳定 `503` 基础设施不可用语义，本轮实际结果为 `REDIS_UNAVAILABLE`
+- `GatewayExceptionHandler` 采用 cause chain 分类，不让 Web 层直接依赖 Redis/JDBC 具体实现包：
+  - class/message 命中 `redis/redisson/lettuce` -> `REDIS_UNAVAILABLE`
+  - class/message 命中 `jdbc/mysql/sqlnontransientconnection/datasource/database` -> `DATABASE_UNAVAILABLE`
+  - class/message 命中 `seata/transaction coordinator/global transaction` -> `TRANSACTION_COORDINATOR_UNAVAILABLE`
+- 可靠性套件首次新增真正的本地组合场景 `redis-mysql-outage`，不再只覆盖单组件探针。
+- Redisson 在 Redis 容器重启后可能短时间保持旧连接导致 Actuator `redis` health 仍为 `DOWN`；脚本现已增加 `gateway-app` 健康恢复兜底，必要时自动重启应用再继续后续场景。
+- 最新证据目录 `.tmp-reliability/20260429-233650`：
+  - `redis-outage => PASS`
+  - `mysql-outage => PASS`
+  - `redis-mysql-outage => PASS`
+  - `rocketmq-broker-outage => PASS`
+  - `seata-outage => REVIEW`
+- Seata 仍然是正式交付前的真实决策项：
+  - 当前本地行为为 Seata 掉线时支付创建仍返回 `200 / SUCCESS`
+  - 这不是脚本缺陷，需明确最终事务策略后才能把 `REVIEW` 改为 `PASS` 或 `FAIL`
+## Final Delivery Boundary Findings (2026-04-29)
+
+- Repository-controlled delivery work now has an explicit handoff checklist in `docs/delivery/final-delivery-decision-checklist.md`.
+- The remaining blockers are external inputs rather than local implementation gaps: real Dubbo provider contract, merchant key custody, final payment state policy, refund model decision, Seata outage policy, and target-environment evidence.
+- Formal user acceptance should not be claimed from sandbox-only evidence; local Docker evidence proves technical readiness and regression safety, not real provider compatibility.
+- The local reliability suite currently proves Redis, MySQL, Redis+MySQL, and RocketMQ broker behavior; Seata remains `REVIEW` until the transaction acceptance policy is decided.

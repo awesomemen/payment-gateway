@@ -12,6 +12,7 @@
 - `evidence-package-template.md`
 - `local-evidence-index.md`
 - `local-reliability-suite.md`
+- `final-delivery-decision-checklist.md`
 
 使用顺序建议：
 
@@ -22,4 +23,5 @@
 5. 收集验收材料时使用 `evidence-package-template.md`
 6. 回看当前仓库已沉淀的本地证据时看 `local-evidence-index.md`
 7. 本地跑组件故障探针时看 `local-reliability-suite.md`
-8. 出现异常时看 `troubleshooting-guide.md`
+8. 判断正式验收前还缺哪些外部输入时看 `final-delivery-decision-checklist.md`
+9. 出现异常时看 `troubleshooting-guide.md`
