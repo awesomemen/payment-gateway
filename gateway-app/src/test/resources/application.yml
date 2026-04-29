@@ -1,0 +1,20 @@
+spring:
+  cloud:
+    nacos:
+      discovery:
+        enabled: false
+      config:
+        enabled: false
+    sentinel:
+      enabled: false
+
+dubbo:
+  enabled: false
+
+seata:
+  enabled: false
+
+gateway:
+  logging:
+    logstash:
+      enabled: false

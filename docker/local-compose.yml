@@ -1,0 +1,398 @@
+# docker/local-compose.yml
+# 本地开发环境依赖编排
+# 启动命令：docker compose -f docker/local-compose.yml up -d
+# 停止命令：docker compose -f docker/local-compose.yml down
+# 清理数据：docker compose -f docker/local-compose.yml down -v
+
+networks:
+  gateway-local:
+    driver: bridge
+
+volumes:
+  mysql-data:
+  redis-data:
+  nacos-data:
+  rocketmq-namesrv-data:
+  rocketmq-broker-data:
+  elasticsearch-data:
+
+services:
+
+  # ─────────────────────────────────────────────
+  # MySQL 8.4
+  # 端口：3306
+  # 账号：root / local_root_pass
+  # 业务库：gateway_db
+  # ─────────────────────────────────────────────
+  mysql:
+    image: mysql:8.4
+    container_name: gateway-mysql
+    restart: unless-stopped
+    networks:
+      - gateway-local
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: local_root_pass
+      MYSQL_DATABASE: gateway_db
+      MYSQL_USER: gateway
+      MYSQL_PASSWORD: gateway_local_pass
+      TZ: Asia/Shanghai
+    volumes:
+      - mysql-data:/var/lib/mysql
+      # 如有初始化 SQL，放在 docker/mysql/init/ 目录下
+      - ./mysql/init:/docker-entrypoint-initdb.d:ro
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-time-zone=+08:00
+      - --lower_case_table_names=1
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-plocal_root_pass"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─────────────────────────────────────────────
+  # Redis 7.2.13
+  # 端口：6379
+  # 密码：local_redis_pass
+  # ─────────────────────────────────────────────
+  redis:
+    image: redis:7.2.13
+    container_name: gateway-redis
+    restart: unless-stopped
+    networks:
+      - gateway-local
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: >
+      redis-server
+      --requirepass local_redis_pass
+      --appendonly yes
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "local_redis_pass", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─────────────────────────────────────────────
+  # Nacos 3.0.3 单机模式
+  # 端口：8848（HTTP）、9848（gRPC）
+  # 控制台：http://localhost:8848/nacos
+  # 账号：nacos / nacos
+  # 注意：Spring Cloud Alibaba 2025.0.x 官方要求 Nacos Server 使用 3.x
+  # ─────────────────────────────────────────────
+  nacos:
+    image: nacos/nacos-server:v3.0.3
+    container_name: gateway-nacos
+    restart: unless-stopped
+    networks:
+      - gateway-local
+    ports:
+      - "8848:8848"
+      - "9848:9848"
+      - "9849:9849"
+    environment:
+      MODE: standalone
+      NACOS_AUTH_ENABLE: "false"
+      NACOS_AUTH_TOKEN: "bG9jYWwtbmFjb3MtdGVjaC1zY2FmZm9sZC10b2tlbi0wMDAwMDAwMDAwMDAwMDA="
+      NACOS_AUTH_IDENTITY_KEY: "local-tech-key"
+      NACOS_AUTH_IDENTITY_VALUE: "local-tech-value"
+      JVM_XMS: 256m
+      JVM_XMX: 256m
+      TZ: Asia/Shanghai
+    volumes:
+      - nacos-data:/home/nacos/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8848/nacos/"]
+      interval: 15s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
+
+  # ─────────────────────────────────────────────
+  # RocketMQ 5.3.4 — NameServer
+  # 端口：9876
+  # ─────────────────────────────────────────────
+  rocketmq-namesrv:
+    image: apache/rocketmq:5.3.4
+    container_name: gateway-rocketmq-namesrv
+    restart: unless-stopped
+    networks:
+      - gateway-local
+    ports:
+      - "9876:9876"
+    volumes:
+      - rocketmq-namesrv-data:/home/rocketmq/logs
+    command: nameserver
+    environment:
+      TZ: Asia/Shanghai
+      JAVA_OPT_EXT: "-Xms256m -Xmx256m"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9876 || exit 0"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  # ─────────────────────────────────────────────
+  # RocketMQ 5.3.4 — Broker
+  # 端口：10909（fast）、10911（remoting）、10912（HA）
+  # 关键：brokerIP1 必须设为宿主机可达地址
+  # Windows 宿主机访问容器服务使用 host-gateway 或直接写 127.0.0.1
+  # ─────────────────────────────────────────────
+  rocketmq-broker:
+    image: apache/rocketmq:5.3.4
+    container_name: gateway-rocketmq-broker
+    restart: unless-stopped
+    user: "0:0"
+    entrypoint:
+      - /bin/sh
+      - /home/rocketmq/start-broker.sh
+    networks:
+      - gateway-local
+    ports:
+      - "10909:10909"
+      - "10911:10911"
+      - "10912:10912"
+    volumes:
+      - rocketmq-broker-data:/home/rocketmq/store
+      # broker.conf 挂载，关键配置见下方说明
+      - ./rocketmq/broker.conf:/home/rocketmq/rocketmq-5.3.4/conf/broker.conf:ro
+      - ./rocketmq/start-broker.sh:/home/rocketmq/start-broker.sh:ro
+    environment:
+      TZ: Asia/Shanghai
+      JAVA_OPT_EXT: "-Xms256m -Xmx256m"
+    depends_on:
+      rocketmq-namesrv:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "cd /home/rocketmq/rocketmq-5.3.4/bin && ./mqadmin clusterList -n gateway-rocketmq-namesrv:9876 | grep -q broker-local"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ─────────────────────────────────────────────
+  # Seata Server 2.x 单机模式
+  # 端口：8091（gRPC）、7091（控制台）
+  # 控制台：http://localhost:7091
+  # 账号：seata / seata
+  # 存储模式：db（协调器状态落 MySQL）
+  # ─────────────────────────────────────────────
+  seata:
+    build:
+      context: ./seata
+    container_name: gateway-seata
+    restart: unless-stopped
+    networks:
+      - gateway-local
+    ports:
+      - "8091:8091"
+      - "7091:7091"
+    environment:
+      TZ: Asia/Shanghai
+    volumes:
+      - ./seata/conf/application.yml:/seata-server/resources/application.yml:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+      nacos:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:7091/health && wget -q -O - 'http://nacos:8848/nacos/v1/ns/instance/list?serviceName=seata-server&groupName=SEATA_GROUP' | grep -q '\"hosts\":\\['"]
+      interval: 20s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
+
+  # ─────────────────────────────────────────────
+  # SkyWalking OAP Server（可选，按需启动）
+  # 端口：11800（gRPC collector）、12800（HTTP REST）
+  # 存储模式：H2 内存（本地开发用，重启数据清空）
+  # ─────────────────────────────────────────────
+  skywalking-oap:
+    build:
+      context: ./skywalking/oap
+    container_name: gateway-skywalking-oap
+    restart: unless-stopped
+    networks:
+      - gateway-local
+    ports:
+      - "11800:11800"
+      - "12800:12800"
+      - "9411:9411"
+      - "9412:9412"
+    environment:
+      TZ: Asia/Shanghai
+      SW_STORAGE: mysql
+      SW_CORE_RECORD_DATA_TTL: 2
+      SW_CORE_METRICS_DATA_TTL: 2
+    volumes:
+      - ./skywalking/oap/application.yml:/skywalking/config/application.yml:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:9412/zipkin/api/v2/services >/dev/null || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  # ─────────────────────────────────────────────
+  # SkyWalking UI（可选，按需启动）
+  # 端口：18080
+  # 访问：http://localhost:18080
+  # ─────────────────────────────────────────────
+  skywalking-ui:
+    image: apache/skywalking-ui:10.1.0
+    container_name: gateway-skywalking-ui
+    restart: unless-stopped
+    networks:
+      - gateway-local
+    ports:
+      - "18080:8080"
+    environment:
+      TZ: Asia/Shanghai
+      SW_OAP_ADDRESS: http://skywalking-oap:12800
+    depends_on:
+      skywalking-oap:
+        condition: service_healthy
+
+  sentinel-dashboard:
+    image: bladex/sentinel-dashboard:1.8.8
+    container_name: gateway-sentinel-dashboard
+    restart: unless-stopped
+    networks:
+      - gateway-local
+    ports:
+      - "8718:8858"
+    environment:
+      TZ: Asia/Shanghai
+
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    container_name: gateway-prometheus
+    restart: unless-stopped
+    networks:
+      - gateway-local
+    ports:
+      - "19090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      gateway-app:
+        condition: service_started
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    container_name: gateway-grafana
+    restart: unless-stopped
+    networks:
+      - gateway-local
+    ports:
+      - "13000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      TZ: Asia/Shanghai
+    volumes:
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+    depends_on:
+      prometheus:
+        condition: service_started
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+    container_name: gateway-elasticsearch
+    restart: unless-stopped
+    networks:
+      - gateway-local
+    ports:
+      - "19200:9200"
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+      TZ: Asia/Shanghai
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.17.0
+    container_name: gateway-logstash
+    restart: unless-stopped
+    networks:
+      - gateway-local
+    ports:
+      - "15000:5000"
+    volumes:
+      - ./logstash/pipeline/logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro
+    depends_on:
+      elasticsearch:
+        condition: service_started
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.17.0
+    container_name: gateway-kibana
+    restart: unless-stopped
+    networks:
+      - gateway-local
+    ports:
+      - "15601:5601"
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+      TZ: Asia/Shanghai
+    depends_on:
+      elasticsearch:
+        condition: service_started
+
+  # ─────────────────────────────────────────────
+  # Payment Gateway App
+  # 端口：18081
+  # 说明：使用 application.yml 中的 docker profile 连接同网络内的中间件
+  # ─────────────────────────────────────────────
+  gateway-app:
+    build:
+      context: ..
+      dockerfile: gateway-app/Dockerfile
+    container_name: gateway-app
+    restart: unless-stopped
+    networks:
+      - gateway-local
+    ports:
+      - "18081:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      TZ: Asia/Shanghai
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nacos:
+        condition: service_healthy
+      rocketmq-namesrv:
+        condition: service_healthy
+      rocketmq-broker:
+        condition: service_healthy
+      seata:
+        condition: service_healthy
+      skywalking-oap:
+        condition: service_healthy
+      sentinel-dashboard:
+        condition: service_started
+      logstash:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/actuator/health || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 6
+      start_period: 40s

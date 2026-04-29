@@ -1,0 +1,300 @@
+spring:
+  application:
+    name: payment-gateway
+  cloud:
+    nacos:
+      discovery:
+        enabled: false
+      config:
+        enabled: false
+    sentinel:
+      enabled: false
+
+server:
+  port: ${GATEWAY_SERVER_PORT:18081}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  tracing:
+    enabled: true
+    sampling:
+      probability: 1.0
+  zipkin:
+    tracing:
+      endpoint: ${GATEWAY_SKYWALKING_ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
+
+info:
+  app:
+    name: payment-gateway
+    stage: tech-scaffold
+
+gateway:
+  downstream:
+    sandbox:
+      enabled: ${GATEWAY_DOWNSTREAM_SANDBOX_ENABLED:true}
+  security:
+    config-source: ${GATEWAY_SECURITY_CONFIG_SOURCE:application-properties}
+    request-expire-seconds: ${GATEWAY_REQUEST_EXPIRE_SECONDS:300}
+    replay-protect-seconds: ${GATEWAY_REPLAY_PROTECT_SECONDS:300}
+    merchants:
+      MCH100001:
+        enabled: ${GATEWAY_MCH100001_ENABLED:true}
+        signature-key: ${GATEWAY_MCH100001_SIGNATURE_KEY:demo-signature-key}
+  idempotency:
+    expire-seconds: ${GATEWAY_IDEMPOTENCY_EXPIRE_SECONDS:86400}
+    lock-wait-millis: ${GATEWAY_IDEMPOTENCY_LOCK_WAIT_MILLIS:0}
+    lock-lease-seconds: ${GATEWAY_IDEMPOTENCY_LOCK_LEASE_SECONDS:10}
+  governance:
+    permits-per-minute: ${GATEWAY_PERMITS_PER_MINUTE:60}
+  reconcile:
+    enabled: ${GATEWAY_RECONCILE_ENABLED:false}
+    processing-limit: ${GATEWAY_RECONCILE_PROCESSING_LIMIT:20}
+    processing-cron: ${GATEWAY_RECONCILE_PROCESSING_CRON:0/30 * * * * *}
+  messaging:
+    rocketmq:
+      enabled: ${GATEWAY_ROCKETMQ_OUTBOX_ENABLED:true}
+      topic: ${GATEWAY_ROCKETMQ_OUTBOX_TOPIC:gateway-payment-events}
+      tag: ${GATEWAY_ROCKETMQ_OUTBOX_TAG:PAYMENT_CREATED}
+      retry-enabled: ${GATEWAY_ROCKETMQ_OUTBOX_RETRY_ENABLED:false}
+      retry-limit: ${GATEWAY_ROCKETMQ_OUTBOX_RETRY_LIMIT:20}
+      retry-delay-seconds: ${GATEWAY_ROCKETMQ_OUTBOX_RETRY_DELAY_SECONDS:300}
+      retry-cron: ${GATEWAY_ROCKETMQ_OUTBOX_RETRY_CRON:0 */1 * * * *}
+    notification:
+      enabled: ${GATEWAY_NOTIFICATION_RETRY_ENABLED:false}
+      retry-limit: ${GATEWAY_NOTIFICATION_RETRY_LIMIT:20}
+      max-consume-retries: ${GATEWAY_NOTIFICATION_MAX_CONSUME_RETRIES:3}
+      retry-cron: ${GATEWAY_NOTIFICATION_RETRY_CRON:0 */1 * * * *}
+      consumer-group: ${GATEWAY_NOTIFICATION_CONSUMER_GROUP:gateway-notification-consumer}
+  tech:
+    sentinel-dashboard:
+      url: ${GATEWAY_SENTINEL_DASHBOARD_URL:http://localhost:8718}
+    seata-health:
+      url: ${GATEWAY_SEATA_HEALTH_URL:http://localhost:7091/health}
+    skywalking-query:
+      url: ${GATEWAY_SKYWALKING_QUERY_URL:http://localhost:9412/zipkin/api/v2/services}
+    prometheus:
+      url: ${GATEWAY_PROMETHEUS_URL:http://localhost:19090/-/ready}
+    grafana:
+      url: ${GATEWAY_GRAFANA_URL:http://localhost:13000/api/health}
+    elasticsearch:
+      url: ${GATEWAY_ELASTICSEARCH_URL:http://localhost:19200/_cluster/health}
+    kibana:
+      url: ${GATEWAY_KIBANA_URL:http://localhost:15601/api/status}
+    logstash:
+      host: ${GATEWAY_LOGSTASH_HOST:localhost}
+      port: ${GATEWAY_LOGSTASH_PORT:15000}
+    dubbo:
+      host: ${GATEWAY_DUBBO_HOST:127.0.0.1}
+      port: ${GATEWAY_DUBBO_PORT:20880}
+  logging:
+    logstash:
+      enabled: ${GATEWAY_LOGSTASH_ENABLED:false}
+      host: ${GATEWAY_LOGSTASH_HOST:localhost}
+      port: ${GATEWAY_LOGSTASH_PORT:15000}
+
+rocketmq:
+  name-server: ${GATEWAY_ROCKETMQ_NAMESRV:localhost:9876}
+  producer:
+    group: ${GATEWAY_ROCKETMQ_PRODUCER_GROUP:gateway-tech-producer}
+
+dubbo:
+  enabled: false
+
+seata:
+  enabled: false
+
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+    import: optional:nacos:gateway-governance.json?group=DEFAULT_GROUP&refreshEnabled=true,optional:nacos:gateway-security.json?group=DEFAULT_GROUP&refreshEnabled=true
+  datasource:
+    url: jdbc:mysql://localhost:${GATEWAY_MYSQL_PORT:3307}/gateway_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: ${GATEWAY_MYSQL_USERNAME:gateway}
+    password: ${GATEWAY_MYSQL_PASSWORD:gateway_local_pass}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  data:
+    redis:
+      host: ${GATEWAY_REDIS_HOST:localhost}
+      port: ${GATEWAY_REDIS_PORT:6379}
+      password: ${GATEWAY_REDIS_PASSWORD:local_redis_pass}
+  cloud:
+    nacos:
+      discovery:
+        enabled: true
+        server-addr: ${GATEWAY_NACOS_ADDR:localhost:8848}
+        namespace: ${GATEWAY_NACOS_NAMESPACE:}
+        health-indicator:
+          enabled: true
+      config:
+        enabled: true
+        server-addr: ${GATEWAY_NACOS_ADDR:localhost:8848}
+        namespace: ${GATEWAY_NACOS_NAMESPACE:}
+        file-extension: json
+        health-indicator:
+          enabled: true
+    sentinel:
+      enabled: true
+      transport:
+        dashboard: ${GATEWAY_SENTINEL_DASHBOARD_HOST_PORT:localhost:8718}
+        port: ${GATEWAY_SENTINEL_API_PORT:18718}
+
+seata:
+  enabled: true
+  application-id: payment-gateway
+  tx-service-group: gateway-tx-group
+  registry:
+    type: nacos
+    nacos:
+      server-addr: ${GATEWAY_NACOS_ADDR:localhost:8848}
+      group: SEATA_GROUP
+      application: seata-server
+      namespace: ${GATEWAY_NACOS_NAMESPACE:}
+  service:
+    vgroup-mapping:
+      gateway-tx-group: default
+
+dubbo:
+  enabled: true
+  application:
+    name: payment-gateway
+  registry:
+    address: nacos://${GATEWAY_NACOS_ADDR:localhost:8848}
+  protocol:
+    name: dubbo
+    port: ${GATEWAY_DUBBO_PORT:20880}
+  scan:
+    base-packages: com.example.payment.gateway.infrastructure.dubbo
+
+gateway:
+  reconcile:
+    enabled: true
+  logging:
+    logstash:
+      enabled: false
+  messaging:
+    notification:
+      enabled: true
+    rocketmq:
+      retry-enabled: true
+
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+    import: optional:nacos:gateway-governance.json?group=DEFAULT_GROUP&refreshEnabled=true,optional:nacos:gateway-security.json?group=DEFAULT_GROUP&refreshEnabled=true
+  datasource:
+    url: jdbc:mysql://mysql:3306/gateway_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: gateway
+    password: gateway_local_pass
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  data:
+    redis:
+      host: redis
+      port: 6379
+      password: local_redis_pass
+  cloud:
+    nacos:
+      discovery:
+        enabled: true
+        server-addr: nacos:8848
+        health-indicator:
+          enabled: true
+      config:
+        enabled: true
+        server-addr: nacos:8848
+        file-extension: json
+        health-indicator:
+          enabled: true
+    sentinel:
+      enabled: true
+      transport:
+        dashboard: sentinel-dashboard:8858
+        port: 18718
+
+server:
+  port: 8080
+
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  zipkin:
+    tracing:
+      endpoint: http://skywalking-oap:9411/api/v2/spans
+
+rocketmq:
+  name-server: rocketmq-namesrv:9876
+  producer:
+    group: gateway-tech-producer
+
+dubbo:
+  enabled: true
+  application:
+    name: payment-gateway
+  registry:
+    address: nacos://nacos:8848
+  protocol:
+    name: dubbo
+    port: 20880
+  scan:
+    base-packages: com.example.payment.gateway.infrastructure.dubbo
+
+seata:
+  enabled: true
+  application-id: payment-gateway
+  tx-service-group: gateway-tx-group
+  registry:
+    type: nacos
+    nacos:
+      server-addr: nacos:8848
+      group: SEATA_GROUP
+      application: seata-server
+      namespace: ""
+  service:
+    vgroup-mapping:
+      gateway-tx-group: default
+
+gateway:
+  reconcile:
+    enabled: true
+  messaging:
+    notification:
+      enabled: true
+  tech:
+    sentinel-dashboard:
+      url: http://sentinel-dashboard:8858
+    seata-health:
+      url: http://seata:7091/health
+    skywalking-query:
+      url: http://skywalking-oap:9412/zipkin/api/v2/services
+    prometheus:
+      url: http://prometheus:9090/-/ready
+    grafana:
+      url: http://grafana:3000/api/health
+    elasticsearch:
+      url: http://elasticsearch:9200/_cluster/health
+    kibana:
+      url: http://kibana:5601/api/status
+    logstash:
+      host: logstash
+      port: 5000
+    dubbo:
+      host: 127.0.0.1
+      port: 20880
+  logging:
+    logstash:
+      enabled: true
+      host: logstash
+      port: 5000

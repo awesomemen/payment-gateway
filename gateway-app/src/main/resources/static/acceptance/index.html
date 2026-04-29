@@ -1,0 +1,1403 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payment Gateway Developer Validation Workbench</title>
+  <style>
+    :root {
+      --bg: #f2ede0;
+      --panel: rgba(255, 253, 247, 0.95);
+      --ink: #1d241d;
+      --muted: #5d655e;
+      --accent: #244f35;
+      --accent-soft: #dbe6da;
+      --line: rgba(108, 114, 106, 0.2);
+      --ok: #1f7a43;
+      --fail: #b43b2f;
+      --warn: #9a6715;
+      --shadow: 0 18px 40px rgba(27, 36, 29, 0.08);
+      --code-bg: #162018;
+      --code-ink: #eef4ee;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background:
+          radial-gradient(circle at top left, rgba(36, 79, 53, 0.16), transparent 28%),
+          radial-gradient(circle at bottom right, rgba(154, 103, 21, 0.10), transparent 24%),
+          linear-gradient(180deg, #f8f4ea 0%, var(--bg) 100%);
+    }
+
+    main {
+      max-width: 1360px;
+      margin: 0 auto;
+      padding: 34px 18px 64px;
+    }
+
+    .hero,
+    .grid {
+      display: grid;
+      gap: 18px;
+    }
+
+    .hero {
+      grid-template-columns: minmax(0, 1.4fr) minmax(300px, 0.9fr);
+      align-items: stretch;
+    }
+
+    .grid {
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      margin-top: 22px;
+    }
+
+    .wide-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+      gap: 18px;
+      margin-top: 18px;
+    }
+
+    .hero-card,
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+    }
+
+    .hero-card {
+      padding: 26px 24px;
+    }
+
+    .hero-card h1 {
+      margin: 0 0 10px;
+      font-size: 40px;
+      line-height: 1.04;
+    }
+
+    .hero-card p,
+    .panel p,
+    .helper {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.68;
+    }
+
+    .hero-tags,
+    .actions,
+    .link-chips,
+    .copy-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .hero-tags {
+      margin-top: 18px;
+    }
+
+    .tag,
+    .chip {
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: #eef4ee;
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    .panel {
+      padding: 18px;
+    }
+
+    .panel h2 {
+      margin: 0 0 8px;
+      font-size: 20px;
+    }
+
+    .panel h3 {
+      margin: 18px 0 10px;
+      font-size: 16px;
+    }
+
+    .state-grid,
+    .field-grid,
+    .evidence-grid,
+    .suite-grid {
+      display: grid;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .state-grid,
+    .suite-grid {
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    }
+
+    .field-grid {
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    }
+
+    .evidence-grid {
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }
+
+    .state-pill,
+    .suite-pill,
+    .field,
+    .evidence-card {
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: #faf7ef;
+      padding: 12px 14px;
+    }
+
+    .state-pill strong,
+    .suite-pill strong,
+    .field label,
+    .evidence-card strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 13px;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .state-pill span,
+    .suite-pill span {
+      font-size: 14px;
+      word-break: break-word;
+      line-height: 1.55;
+    }
+
+    .actions,
+    .copy-actions {
+      margin-top: 14px;
+    }
+
+    button,
+    .link-button {
+      border: 0;
+      border-radius: 999px;
+      padding: 10px 16px;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: transform 120ms ease, opacity 120ms ease;
+    }
+
+    button:hover,
+    .link-button:hover { transform: translateY(-1px); }
+    button:active,
+    .link-button:active { transform: translateY(0); }
+
+    button.secondary,
+    .link-button.secondary {
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    button.warn {
+      background: #f2e4c7;
+      color: #744d0f;
+    }
+
+    button.ghost {
+      background: transparent;
+      color: var(--accent);
+      border: 1px solid var(--line);
+    }
+
+    select,
+    input,
+    textarea {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: #fffef9;
+      color: var(--ink);
+      padding: 10px 12px;
+      font: inherit;
+    }
+
+    textarea {
+      min-height: 86px;
+      resize: vertical;
+    }
+
+    pre {
+      margin: 0;
+      padding: 14px;
+      min-height: 160px;
+      border-radius: 16px;
+      background: var(--code-bg);
+      color: var(--code-ink);
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 13px;
+      line-height: 1.58;
+    }
+
+    .result-list {
+      display: grid;
+      gap: 10px;
+      margin-top: 14px;
+      max-height: 560px;
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .result-item {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: #fcfaf4;
+    }
+
+    .result-item small {
+      color: var(--muted);
+      display: block;
+      margin-top: 4px;
+      line-height: 1.5;
+    }
+
+    .status-ok { color: var(--ok); font-weight: 700; }
+    .status-fail { color: var(--fail); font-weight: 700; }
+    .status-warn { color: var(--warn); font-weight: 700; }
+
+    @media (max-width: 1080px) {
+      .hero,
+      .wide-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <section class="hero">
+    <div class="hero-card">
+      <h1>开发验证工作台</h1>
+      <p>当前页面已经从单纯验收页升级为开发验证工作台。它覆盖支付创建、查询、回调、退款、交易查询、审计检索、补偿重试和异常注入，并提供可编辑场景预置、suite 进度、最新上下文和证据复制，减少开发人员手工拼参、抄 requestId 和手动整理回归证据的成本。</p>
+      <div class="hero-tags">
+        <span class="tag">P0 支付创建</span>
+        <span class="tag">P1 查询与回调</span>
+        <span class="tag">P2 MQ 重试与补偿</span>
+        <span class="tag">P3 退款域</span>
+        <span class="tag">P4 交易查询与审计</span>
+        <span class="tag">Developer Validation Workbench</span>
+      </div>
+    </div>
+    <aside class="hero-card">
+      <h2>最近上下文</h2>
+      <p>工作台会记录最近一次支付、退款、审计 requestId 和最近证据，便于继续跑查询、回调、退款和诊断动作。</p>
+      <div class="state-grid">
+        <div class="state-pill">
+          <strong>Latest Payment</strong>
+          <span id="latest-payment">尚未生成</span>
+        </div>
+        <div class="state-pill">
+          <strong>Latest Refund</strong>
+          <span id="latest-refund">尚未生成</span>
+        </div>
+        <div class="state-pill">
+          <strong>Latest Audit Key</strong>
+          <span id="latest-audit-key">尚未生成</span>
+        </div>
+        <div class="state-pill">
+          <strong>最近证据</strong>
+          <span id="latest-evidence-summary">尚未生成</span>
+        </div>
+      </div>
+    </aside>
+  </section>
+
+  <div class="wide-grid">
+    <section class="panel">
+      <h2>环境与诊断</h2>
+      <p>这里负责环境入口、suite 进度和诊断跳转。开发人员先看这里，再决定跑单点验证还是跑组合场景。</p>
+      <div class="actions">
+        <button type="button" onclick="checkHealth()">检查应用健康</button>
+        <button type="button" class="secondary" onclick="checkPrometheusMetric()">检查审计指标</button>
+        <button type="button" class="secondary" onclick="refreshGovernance()">刷新治理配置</button>
+      </div>
+      <div class="link-chips" style="margin-top: 14px;">
+        <a class="chip" href="/actuator/health" target="_blank" rel="noreferrer">Actuator Health</a>
+        <a class="chip" href="/actuator/prometheus" target="_blank" rel="noreferrer">Prometheus Metrics</a>
+        <a class="chip" href="http://localhost:8848/nacos" target="_blank" rel="noreferrer">Nacos</a>
+        <a class="chip" href="http://localhost:7091/health" target="_blank" rel="noreferrer">Seata Health</a>
+        <a class="chip" href="http://localhost:18080" target="_blank" rel="noreferrer">SkyWalking</a>
+      </div>
+      <div class="suite-grid">
+        <div class="suite-pill">
+          <strong>Suite</strong>
+          <span id="suite-name">未运行</span>
+        </div>
+        <div class="suite-pill">
+          <strong>Step</strong>
+          <span id="suite-step">等待开始</span>
+        </div>
+        <div class="suite-pill">
+          <strong>Progress</strong>
+          <span id="suite-progress">0 / 0</span>
+        </div>
+      </div>
+      <h3>诊断快捷动作</h3>
+      <div class="actions">
+        <button type="button" class="ghost" onclick="runLatestPaymentQueryShortcut()">最近支付查询</button>
+        <button type="button" class="ghost" onclick="runLatestRefundQueryShortcut()">最近退款查询</button>
+        <button type="button" class="ghost" onclick="runLatestTransactionShortcut()">最近交易详情</button>
+        <button type="button" class="ghost" onclick="runLatestAuditShortcut()">最近审计检索</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>场景预置</h2>
+      <p>支持开发人员按预置直接跑，也支持在执行前人工改前缀、金额、目标状态和追踪 ID。页面不会替你暴露危险管理动作，只覆盖本地 docker 验证范围。</p>
+      <div class="field-grid">
+        <div class="field">
+          <label for="preset-select">Preset</label>
+          <select id="preset-select" onchange="applyPreset()">
+            <option value="smoke">smoke</option>
+            <option value="processing">processing</option>
+            <option value="reject">reject</option>
+            <option value="timeout">timeout</option>
+            <option value="error">error</option>
+            <option value="refundProcessing">refund-processing</option>
+            <option value="rateLimit">rate-limit</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="request-prefix">requestPrefix</label>
+          <input id="request-prefix" value="REQ-SMOKE">
+        </div>
+        <div class="field">
+          <label for="idempotency-prefix">idempotencyPrefix</label>
+          <input id="idempotency-prefix" value="IDEMP-SMOKE">
+        </div>
+        <div class="field">
+          <label for="scenario-amount">amount</label>
+          <input id="scenario-amount" value="88.5">
+        </div>
+        <div class="field">
+          <label for="scenario-currency">currency</label>
+          <input id="scenario-currency" value="CNY">
+        </div>
+        <div class="field">
+          <label for="payment-callback-status">paymentCallbackStatus</label>
+          <input id="payment-callback-status" value="SUCCEEDED">
+        </div>
+        <div class="field">
+          <label for="refund-callback-status">refundCallbackStatus</label>
+          <input id="refund-callback-status" value="SUCCEEDED">
+        </div>
+        <div class="field">
+          <label for="target-payment-id">targetPaymentId</label>
+          <input id="target-payment-id" placeholder="自动使用最近支付单">
+        </div>
+        <div class="field">
+          <label for="target-refund-id">targetRefundId</label>
+          <input id="target-refund-id" placeholder="自动使用最近退款单">
+        </div>
+      </div>
+      <div class="field-grid" style="margin-top: 10px;">
+        <div class="field" style="grid-column: 1 / -1;">
+          <label for="preset-note">Preset Notes</label>
+          <textarea id="preset-note" readonly>默认 smoke 场景：适合开发时做主链路快速回归。</textarea>
+        </div>
+      </div>
+      <div class="actions">
+        <button type="button" class="secondary" onclick="applyPreset()">应用预置</button>
+        <button type="button" class="secondary" onclick="resetScenarioEditor()">重置为默认</button>
+        <button type="button" class="ghost" onclick="syncTargetsFromState(true)">用最近上下文覆盖目标 ID</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="grid">
+    <section class="panel">
+      <h2>单功能验证</h2>
+      <p>这里是开发人员日常 smoke check 的主区域，保留一键验证，但执行前会读入当前场景预置。</p>
+      <div class="actions">
+        <button type="button" onclick="runSuccess()">成功请求</button>
+        <button type="button" onclick="runDuplicate()">重复请求</button>
+        <button type="button" onclick="runConflict()">冲突幂等</button>
+        <button type="button" onclick="runReplay()">重放攻击</button>
+        <button type="button" onclick="runBadSignature()">错误签名</button>
+        <button type="button" class="secondary" onclick="runPaymentQueryFlow()">支付查询闭环</button>
+        <button type="button" class="secondary" onclick="runPaymentCallbackFlow()">支付回调闭环</button>
+        <button type="button" class="secondary" onclick="runRefundQueryFlow()">退款查询闭环</button>
+        <button type="button" class="secondary" onclick="runRefundCallbackFlow()">退款回调闭环</button>
+      </div>
+      <div class="actions">
+        <button type="button" class="warn" onclick="runPaymentReject()">支付拒绝注入</button>
+        <button type="button" class="warn" onclick="runPaymentTimeout()">支付超时注入</button>
+        <button type="button" class="warn" onclick="runPaymentError()">支付异常注入</button>
+        <button type="button" class="secondary" onclick="runTransactionLookup()">交易详情查询</button>
+        <button type="button" class="secondary" onclick="runAuditSearch()">交易审计检索</button>
+        <button type="button" class="secondary" onclick="runAuditSummary()">审计汇总</button>
+      </div>
+      <div id="results" class="result-list"></div>
+    </section>
+
+    <section class="panel">
+      <h2>组合场景验证</h2>
+      <p>适合开发收口阶段一键回归。核心验收偏主链路，扩展验收覆盖退款和检索，可靠性验收聚焦治理、补偿和消息侧入口。</p>
+      <div class="actions">
+        <button type="button" onclick="runCoreSuite()">运行核心验收</button>
+        <button type="button" onclick="runExtendedSuite()">运行扩展验收</button>
+        <button type="button" onclick="runReliabilitySuite()">运行可靠性验收</button>
+        <button type="button" class="secondary" onclick="runRateLimit()">治理限流验证</button>
+        <button type="button" class="secondary" onclick="runProcessingReconcile()">处理中补偿</button>
+        <button type="button" class="secondary" onclick="runOutboxRetry()">Outbox 重放</button>
+        <button type="button" class="secondary" onclick="runNotificationRetry()">通知重试</button>
+      </div>
+      <pre id="output">等待操作...</pre>
+    </section>
+  </div>
+
+  <section class="panel" style="margin-top: 18px;">
+    <h2>最近证据</h2>
+    <p>这里保留最近一次请求对应的 curl、请求体、响应体和上下文摘要，便于开发拷贝到日志、工单或 SQL 排查脚本中。</p>
+    <div class="copy-actions">
+      <button type="button" class="secondary" onclick="copyEvidence('curl')">复制最新 curl</button>
+      <button type="button" class="secondary" onclick="copyEvidence('request')">复制最新请求</button>
+      <button type="button" class="secondary" onclick="copyEvidence('response')">复制最新响应</button>
+      <button type="button" class="secondary" onclick="copyEvidence('context')">复制最近上下文</button>
+    </div>
+    <div class="evidence-grid">
+      <div class="evidence-card">
+        <strong>Latest Curl</strong>
+        <pre id="latest-curl">尚未生成</pre>
+      </div>
+      <div class="evidence-card">
+        <strong>Latest Request</strong>
+        <pre id="latest-request">尚未生成</pre>
+      </div>
+      <div class="evidence-card">
+        <strong>Latest Response</strong>
+        <pre id="latest-response">尚未生成</pre>
+      </div>
+      <div class="evidence-card">
+        <strong>Latest Context</strong>
+        <pre id="latest-context">尚未生成</pre>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+  const merchantId = "MCH100001";
+  const signatureKey = "demo-signature-key";
+  const results = document.getElementById("results");
+  const output = document.getElementById("output");
+  const paymentState = document.getElementById("latest-payment");
+  const refundState = document.getElementById("latest-refund");
+  const auditState = document.getElementById("latest-audit-key");
+  const evidenceSummary = document.getElementById("latest-evidence-summary");
+  const suiteName = document.getElementById("suite-name");
+  const suiteStep = document.getElementById("suite-step");
+  const suiteProgress = document.getElementById("suite-progress");
+  const latestCurl = document.getElementById("latest-curl");
+  const latestRequest = document.getElementById("latest-request");
+  const latestResponse = document.getElementById("latest-response");
+  const latestContext = document.getElementById("latest-context");
+
+  const presets = {
+    smoke: {
+      requestPrefix: "REQ-SMOKE",
+      idempotencyPrefix: "IDEMP-SMOKE",
+      amount: "88.5",
+      currency: "CNY",
+      paymentCallbackStatus: "SUCCEEDED",
+      refundCallbackStatus: "SUCCEEDED",
+      note: "默认 smoke 场景：适合开发时做主链路快速回归。"
+    },
+    processing: {
+      requestPrefix: "REQ-PROCESSING",
+      idempotencyPrefix: "IDEMP-PROCESSING",
+      amount: "88.5",
+      currency: "CNY",
+      paymentCallbackStatus: "SUCCEEDED",
+      refundCallbackStatus: "SUCCEEDED",
+      note: "处理中场景：适合跑支付回调闭环和处理中订单纠偏。"
+    },
+    reject: {
+      requestPrefix: "REQ-REJECT",
+      idempotencyPrefix: "IDEMP-REJECT",
+      amount: "88.5",
+      currency: "CNY",
+      paymentCallbackStatus: "SUCCEEDED",
+      refundCallbackStatus: "SUCCEEDED",
+      note: "拒绝场景：用于稳定验证 DOWNSTREAM_REJECTED。"
+    },
+    timeout: {
+      requestPrefix: "REQ-TIMEOUT",
+      idempotencyPrefix: "IDEMP-TIMEOUT",
+      amount: "88.5",
+      currency: "CNY",
+      paymentCallbackStatus: "SUCCEEDED",
+      refundCallbackStatus: "SUCCEEDED",
+      note: "超时场景：用于稳定验证 DOWNSTREAM_TIMEOUT。"
+    },
+    error: {
+      requestPrefix: "REQ-ERROR",
+      idempotencyPrefix: "IDEMP-ERROR",
+      amount: "88.5",
+      currency: "CNY",
+      paymentCallbackStatus: "SUCCEEDED",
+      refundCallbackStatus: "SUCCEEDED",
+      note: "异常场景：用于稳定验证 DOWNSTREAM_SERVICE_ERROR。"
+    },
+    refundProcessing: {
+      requestPrefix: "REQ-REFUND-PROCESSING",
+      idempotencyPrefix: "IDEMP-REFUND-PROCESSING",
+      amount: "10.5",
+      currency: "CNY",
+      paymentCallbackStatus: "SUCCEEDED",
+      refundCallbackStatus: "SUCCEEDED",
+      note: "退款处理中场景：用于退款回调闭环。"
+    },
+    rateLimit: {
+      requestPrefix: "REQ-RATE",
+      idempotencyPrefix: "IDEMP-RATE",
+      amount: "88.5",
+      currency: "CNY",
+      paymentCallbackStatus: "SUCCEEDED",
+      refundCallbackStatus: "SUCCEEDED",
+      note: "限流场景：用于连续触发治理窗口与 RATE_LIMITED。"
+    }
+  };
+
+  const state = {
+    latestPayment: null,
+    latestRefund: null,
+    latestAuditKey: null,
+    latestEvidence: {
+      title: null,
+      curl: "尚未生成",
+      request: "尚未生成",
+      response: "尚未生成",
+      context: "尚未生成"
+    }
+  };
+
+  function nowIso() {
+    return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  }
+
+  function nonce(prefix) {
+    return `${prefix}-${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
+  }
+
+  function requestId(prefix) {
+    return `${prefix}-${Date.now()}`;
+  }
+
+  function normalizeAmount(amount) {
+    return Number(amount).toString();
+  }
+
+  function currentScenario() {
+    return {
+      preset: document.getElementById("preset-select").value,
+      requestPrefix: document.getElementById("request-prefix").value.trim() || "REQ-SMOKE",
+      idempotencyPrefix: document.getElementById("idempotency-prefix").value.trim() || "IDEMP-SMOKE",
+      amount: document.getElementById("scenario-amount").value.trim() || "88.5",
+      currency: document.getElementById("scenario-currency").value.trim() || "CNY",
+      paymentCallbackStatus: document.getElementById("payment-callback-status").value.trim() || "SUCCEEDED",
+      refundCallbackStatus: document.getElementById("refund-callback-status").value.trim() || "SUCCEEDED",
+      targetPaymentId: document.getElementById("target-payment-id").value.trim(),
+      targetRefundId: document.getElementById("target-refund-id").value.trim()
+    };
+  }
+
+  function applyPreset() {
+    const preset = presets[document.getElementById("preset-select").value];
+    document.getElementById("request-prefix").value = preset.requestPrefix;
+    document.getElementById("idempotency-prefix").value = preset.idempotencyPrefix;
+    document.getElementById("scenario-amount").value = preset.amount;
+    document.getElementById("scenario-currency").value = preset.currency;
+    document.getElementById("payment-callback-status").value = preset.paymentCallbackStatus;
+    document.getElementById("refund-callback-status").value = preset.refundCallbackStatus;
+    document.getElementById("preset-note").value = preset.note;
+  }
+
+  function resetScenarioEditor() {
+    document.getElementById("preset-select").value = "smoke";
+    document.getElementById("target-payment-id").value = "";
+    document.getElementById("target-refund-id").value = "";
+    applyPreset();
+    syncTargetsFromState(true);
+  }
+
+  function syncTargetsFromState(force = false) {
+    const paymentField = document.getElementById("target-payment-id");
+    const refundField = document.getElementById("target-refund-id");
+    if (state.latestPayment?.gatewayPaymentId && (force || !paymentField.value)) {
+      paymentField.value = state.latestPayment.gatewayPaymentId;
+    }
+    if (state.latestRefund?.gatewayRefundId && (force || !refundField.value)) {
+      refundField.value = state.latestRefund.gatewayRefundId;
+    }
+  }
+
+  function scenarioRequestId(explicitPrefix) {
+    return requestId(explicitPrefix || currentScenario().requestPrefix);
+  }
+
+  function scenarioIdempotencyKey(explicitPrefix) {
+    return requestId(explicitPrefix || currentScenario().idempotencyPrefix);
+  }
+
+  function renderJson(value) {
+    if (value == null) {
+      return "null";
+    }
+    if (typeof value === "string") {
+      return value;
+    }
+    return JSON.stringify(value, null, 2);
+  }
+
+  function buildCurl(url, method, payload) {
+    const absoluteUrl = `${window.location.origin}${url}`;
+    if (!payload) {
+      return `curl -X ${method} "${absoluteUrl}"`;
+    }
+    const escaped = JSON.stringify(payload).replace(/"/g, '\\"');
+    return `curl -X ${method} "${absoluteUrl}" -H "Content-Type: application/json" -d "${escaped}"`;
+  }
+
+  function updateStatePanel() {
+    paymentState.textContent = state.latestPayment
+        ? `${state.latestPayment.gatewayPaymentId} / ${state.latestPayment.requestId} / ${state.latestPayment.status}`
+        : "尚未生成";
+    refundState.textContent = state.latestRefund
+        ? `${state.latestRefund.gatewayRefundId} / ${state.latestRefund.requestId} / ${state.latestRefund.status}`
+        : "尚未生成";
+    auditState.textContent = state.latestAuditKey ?? "尚未生成";
+    evidenceSummary.textContent = state.latestEvidence.title
+        ? `${state.latestEvidence.title}`
+        : "尚未生成";
+    latestCurl.textContent = state.latestEvidence.curl;
+    latestRequest.textContent = state.latestEvidence.request;
+    latestResponse.textContent = state.latestEvidence.response;
+    latestContext.textContent = state.latestEvidence.context;
+    syncTargetsFromState(false);
+  }
+
+  function rememberAuditKey(requestIdValue) {
+    state.latestAuditKey = `${merchantId}:${requestIdValue}`;
+    updateStatePanel();
+  }
+
+  function rememberEvidence(title, url, method, payload, body) {
+    state.latestEvidence = {
+      title,
+      curl: buildCurl(url, method, payload),
+      request: renderJson(payload),
+      response: renderJson(body),
+      context: renderJson({
+        latestPayment: state.latestPayment,
+        latestRefund: state.latestRefund,
+        latestAuditKey: state.latestAuditKey
+      })
+    };
+    updateStatePanel();
+  }
+
+  async function copyEvidence(type) {
+    const mapping = {
+      curl: state.latestEvidence.curl,
+      request: state.latestEvidence.request,
+      response: state.latestEvidence.response,
+      context: state.latestEvidence.context
+    };
+    const value = mapping[type];
+    if (!value || value === "尚未生成") {
+      renderResult("复制证据", false, `没有可复制的 ${type}`, "warn");
+      return;
+    }
+    await navigator.clipboard.writeText(value);
+    renderResult("复制证据", true, `已复制 ${type}`);
+  }
+
+  function renderResult(label, ok, detail, level = ok ? "ok" : "fail") {
+    const item = document.createElement("div");
+    item.className = "result-item";
+    const statusClass = level === "warn" ? "status-warn" : ok ? "status-ok" : "status-fail";
+    const statusText = level === "warn" ? "WARN" : ok ? "PASS" : "FAIL";
+    item.innerHTML = `<span>${label}<small>${detail}</small></span><span class="${statusClass}">${statusText}</span>`;
+    results.prepend(item);
+  }
+
+  function setOutput(title, payload) {
+    output.textContent = `${title}\n${renderJson(payload)}`;
+  }
+
+  function setSuiteStatus(name, step, current, total) {
+    suiteName.textContent = name;
+    suiteStep.textContent = step;
+    suiteProgress.textContent = `${current} / ${total}`;
+  }
+
+  async function signPairs(pairs) {
+    const message = pairs.map(([key, value]) => `${key}=${value}`).join("&");
+    const key = await crypto.subtle.importKey(
+        "raw",
+        new TextEncoder().encode(signatureKey),
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["sign"]
+    );
+    const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message));
+    return Array.from(new Uint8Array(signature)).map(v => v.toString(16).padStart(2, "0")).join("");
+  }
+
+  async function requestJson(url, options = {}, evidenceTitle = null, payload = null) {
+    const response = await fetch(url, options);
+    const text = await response.text();
+    let body;
+    try {
+      body = text ? JSON.parse(text) : null;
+    } catch (error) {
+      body = text;
+    }
+    if (evidenceTitle) {
+      rememberEvidence(evidenceTitle, url, options.method ?? "GET", payload, body);
+    }
+    return { response, body };
+  }
+
+  async function createPayment(overrides = {}) {
+    const scenario = currentScenario();
+    const payload = {
+      merchantId,
+      requestId: scenarioRequestId(),
+      idempotencyKey: scenarioIdempotencyKey(),
+      amount: Number(scenario.amount),
+      currency: scenario.currency,
+      requestTime: nowIso(),
+      nonce: nonce("pay"),
+      ...overrides
+    };
+    payload.signature = overrides.signature ?? await signPairs([
+      ["merchantId", payload.merchantId],
+      ["requestId", payload.requestId],
+      ["idempotencyKey", payload.idempotencyKey],
+      ["amount", normalizeAmount(payload.amount)],
+      ["currency", payload.currency],
+      ["requestTime", payload.requestTime],
+      ["nonce", payload.nonce]
+    ]);
+    const result = await requestJson("/api/v1/payments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    }, "支付创建", payload);
+    if (result.body?.data?.gatewayPaymentId) {
+      state.latestPayment = {
+        requestId: payload.requestId,
+        gatewayPaymentId: result.body.data.gatewayPaymentId,
+        downstreamPaymentId: result.body.data.downstreamPaymentId ?? null,
+        status: result.body.data.status
+      };
+      rememberAuditKey(payload.requestId);
+    }
+    return { payload, ...result };
+  }
+
+  async function queryPayment(gatewayPaymentId, overrides = {}) {
+    const scenario = currentScenario();
+    const resolvedPaymentId = gatewayPaymentId || scenario.targetPaymentId || state.latestPayment?.gatewayPaymentId;
+    const payload = {
+      merchantId,
+      requestId: requestId("REQ-QUERY"),
+      gatewayPaymentId: resolvedPaymentId,
+      requestTime: nowIso(),
+      nonce: nonce("pay-query"),
+      ...overrides
+    };
+    payload.signature = await signPairs([
+      ["merchantId", payload.merchantId],
+      ["requestId", payload.requestId],
+      ["gatewayPaymentId", payload.gatewayPaymentId],
+      ["requestTime", payload.requestTime],
+      ["nonce", payload.nonce]
+    ]);
+    rememberAuditKey(payload.requestId);
+    return { payload, ...(await requestJson("/api/v1/payments/query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      }, "支付查询", payload)) };
+  }
+
+  async function callbackPayment(gatewayPaymentId, downstreamPaymentId, status, overrides = {}) {
+    const payload = {
+      merchantId,
+      requestId: requestId("REQ-CALLBACK"),
+      gatewayPaymentId,
+      downstreamPaymentId,
+      status,
+      requestTime: nowIso(),
+      nonce: nonce("pay-callback"),
+      message: "Payment callback accepted",
+      ...overrides
+    };
+    payload.signature = await signPairs([
+      ["merchantId", payload.merchantId],
+      ["requestId", payload.requestId],
+      ["gatewayPaymentId", payload.gatewayPaymentId],
+      ["downstreamPaymentId", payload.downstreamPaymentId],
+      ["status", payload.status],
+      ["requestTime", payload.requestTime],
+      ["nonce", payload.nonce]
+    ]);
+    rememberAuditKey(payload.requestId);
+    return { payload, ...(await requestJson("/api/v1/payments/callback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      }, "支付回调", payload)) };
+  }
+
+  async function createRefund(gatewayPaymentId, overrides = {}) {
+    const scenario = currentScenario();
+    const payload = {
+      merchantId,
+      requestId: requestId("REQ-REFUND"),
+      gatewayPaymentId,
+      idempotencyKey: requestId(`R${scenario.idempotencyPrefix}`),
+      amount: Number(scenario.amount),
+      currency: scenario.currency,
+      requestTime: nowIso(),
+      nonce: nonce("refund"),
+      ...overrides
+    };
+    payload.signature = await signPairs([
+      ["merchantId", payload.merchantId],
+      ["requestId", payload.requestId],
+      ["gatewayPaymentId", payload.gatewayPaymentId],
+      ["idempotencyKey", payload.idempotencyKey],
+      ["amount", normalizeAmount(payload.amount)],
+      ["currency", payload.currency],
+      ["requestTime", payload.requestTime],
+      ["nonce", payload.nonce]
+    ]);
+    const result = await requestJson("/api/v1/refunds", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    }, "退款创建", payload);
+    if (result.body?.data?.gatewayRefundId) {
+      state.latestRefund = {
+        requestId: payload.requestId,
+        gatewayRefundId: result.body.data.gatewayRefundId,
+        downstreamRefundId: result.body.data.downstreamRefundId,
+        status: result.body.data.status
+      };
+      rememberAuditKey(payload.requestId);
+    }
+    return { payload, ...result };
+  }
+
+  async function queryRefund(gatewayRefundId, overrides = {}) {
+    const scenario = currentScenario();
+    const resolvedRefundId = gatewayRefundId || scenario.targetRefundId || state.latestRefund?.gatewayRefundId;
+    const payload = {
+      merchantId,
+      requestId: requestId("REQ-REFUND-QUERY"),
+      gatewayRefundId: resolvedRefundId,
+      requestTime: nowIso(),
+      nonce: nonce("refund-query"),
+      ...overrides
+    };
+    payload.signature = await signPairs([
+      ["merchantId", payload.merchantId],
+      ["requestId", payload.requestId],
+      ["gatewayRefundId", payload.gatewayRefundId],
+      ["requestTime", payload.requestTime],
+      ["nonce", payload.nonce]
+    ]);
+    rememberAuditKey(payload.requestId);
+    return { payload, ...(await requestJson("/api/v1/refunds/query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      }, "退款查询", payload)) };
+  }
+
+  async function callbackRefund(gatewayRefundId, downstreamRefundId, status, overrides = {}) {
+    const payload = {
+      merchantId,
+      requestId: requestId("REQ-REFUND-CALLBACK"),
+      gatewayRefundId,
+      downstreamRefundId,
+      status,
+      requestTime: nowIso(),
+      nonce: nonce("refund-callback"),
+      message: "Refund callback accepted",
+      ...overrides
+    };
+    payload.signature = await signPairs([
+      ["merchantId", payload.merchantId],
+      ["requestId", payload.requestId],
+      ["gatewayRefundId", payload.gatewayRefundId],
+      ["downstreamRefundId", payload.downstreamRefundId],
+      ["status", payload.status],
+      ["requestTime", payload.requestTime],
+      ["nonce", payload.nonce]
+    ]);
+    rememberAuditKey(payload.requestId);
+    return { payload, ...(await requestJson("/api/v1/refunds/callback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      }, "退款回调", payload)) };
+  }
+
+  async function queryTransactionByRequest(requestIdValue) {
+    rememberAuditKey(requestIdValue);
+    return requestJson("/api/v1/transactions/detail", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ merchantId, requestId: requestIdValue })
+    }, "交易详情查询", { merchantId, requestId: requestIdValue });
+  }
+
+  async function queryAuditByRequest(requestIdValue) {
+    rememberAuditKey(requestIdValue);
+    return requestJson(`/api/v1/transactions/audit?merchantId=${encodeURIComponent(merchantId)}&requestId=${encodeURIComponent(requestIdValue)}&limit=20`, {}, "交易审计检索", null);
+  }
+
+  async function checkHealth() {
+    const result = await requestJson("/actuator/health", {}, "健康检查", null);
+    const ok = result.response.status === 200 && result.body?.status === "UP";
+    renderResult("应用健康", ok, `HTTP ${result.response.status} / status=${result.body?.status ?? "UNKNOWN"}`);
+    setOutput("健康检查", result.body);
+  }
+
+  async function runSuccess() {
+    const result = await createPayment();
+    const ok = result.response.status === 200 && result.body?.code === "SUCCESS" && result.body?.data?.status === "ACCEPTED";
+    renderResult("成功请求", ok, `HTTP ${result.response.status} / code=${result.body?.code}`);
+    setOutput("成功请求", { request: result.payload, response: result.body });
+    return result;
+  }
+
+  async function runDuplicate() {
+    const seed = Date.now();
+    const requestIdValue = `${currentScenario().requestPrefix}-DUP-${seed}`;
+    const idempotencyKeyValue = `${currentScenario().idempotencyPrefix}-DUP-${seed}`;
+    const first = await createPayment({
+      requestId: requestIdValue,
+      idempotencyKey: idempotencyKeyValue,
+      nonce: nonce("dup-a"),
+      requestTime: nowIso()
+    });
+    const second = await createPayment({
+      requestId: requestIdValue,
+      idempotencyKey: idempotencyKeyValue,
+      nonce: nonce("dup-b"),
+      requestTime: nowIso()
+    });
+    const sameGatewayId = first.body?.data?.gatewayPaymentId && first.body.data.gatewayPaymentId === second.body?.data?.gatewayPaymentId;
+    const ok = first.response.status === 200 && second.response.status === 200 && sameGatewayId;
+    renderResult("重复请求", ok, `first=${first.response.status}, second=${second.response.status}`);
+    setOutput("重复请求", { first: first.body, second: second.body });
+  }
+
+  async function runConflict() {
+    const seed = Date.now();
+    const idempotencyKeyValue = `${currentScenario().idempotencyPrefix}-CONFLICT-${seed}`;
+    await createPayment({
+      requestId: `${currentScenario().requestPrefix}-A-${seed}`,
+      idempotencyKey: idempotencyKeyValue,
+      amount: Number(currentScenario().amount),
+      nonce: nonce("conf-a"),
+      requestTime: nowIso()
+    });
+    const second = await createPayment({
+      requestId: `${currentScenario().requestPrefix}-B-${seed}`,
+      idempotencyKey: idempotencyKeyValue,
+      amount: Number(currentScenario().amount) + 10,
+      nonce: nonce("conf-b"),
+      requestTime: nowIso()
+    });
+    const ok = second.response.status === 409 && second.body?.code === "IDEMPOTENCY_CONFLICT";
+    renderResult("冲突幂等", ok, `HTTP ${second.response.status} / code=${second.body?.code}`);
+    setOutput("冲突幂等", { response: second.body });
+  }
+
+  async function runReplay() {
+    const requestTimeValue = nowIso();
+    const replayNonce = nonce("replay");
+    await createPayment({
+      requestId: `${currentScenario().requestPrefix}-REPLAY-A-${Date.now()}`,
+      idempotencyKey: `${currentScenario().idempotencyPrefix}-REPLAY-A-${Date.now()}`,
+      nonce: replayNonce,
+      requestTime: requestTimeValue
+    });
+    const second = await createPayment({
+      requestId: `${currentScenario().requestPrefix}-REPLAY-B-${Date.now()}`,
+      idempotencyKey: `${currentScenario().idempotencyPrefix}-REPLAY-B-${Date.now()}`,
+      nonce: replayNonce,
+      requestTime: requestTimeValue
+    });
+    const ok = second.response.status === 401 && second.body?.code === "REQUEST_REPLAYED";
+    renderResult("重放攻击", ok, `HTTP ${second.response.status} / code=${second.body?.code}`);
+    setOutput("重放攻击", { response: second.body });
+  }
+
+  async function runBadSignature() {
+    const result = await createPayment({ signature: "invalid-signature" });
+    const ok = result.response.status === 401 && result.body?.code === "SIGNATURE_INVALID";
+    renderResult("错误签名", ok, `HTTP ${result.response.status} / code=${result.body?.code}`);
+    setOutput("错误签名", { response: result.body });
+  }
+
+  async function runPaymentQueryFlow() {
+    const created = await createPayment({ requestId: scenarioRequestId("REQ-QUERY-SEED") });
+    if (created.response.status !== 200 || !created.body?.data?.gatewayPaymentId) {
+      renderResult("支付查询闭环", false, `create failed: HTTP ${created.response.status}`);
+      setOutput("支付查询闭环", { create: created.body });
+      return;
+    }
+    const queried = await queryPayment(created.body.data.gatewayPaymentId);
+    const ok = queried.response.status === 200 && queried.body?.code === "SUCCESS" && queried.body?.data?.status === "SUCCEEDED";
+    renderResult("支付查询闭环", ok, `query=${queried.response.status} / status=${queried.body?.data?.status}`);
+    state.latestPayment = {
+      requestId: created.payload.requestId,
+      gatewayPaymentId: created.body.data.gatewayPaymentId,
+      downstreamPaymentId: queried.body?.data?.downstreamPaymentId ?? null,
+      status: queried.body?.data?.status
+    };
+    updateStatePanel();
+    setOutput("支付查询闭环", { create: created.body, query: queried.body });
+  }
+
+  async function runPaymentCallbackFlow() {
+    const scenario = currentScenario();
+    const created = await createPayment({ requestId: scenarioRequestId("REQ-PROCESSING") });
+    if (created.response.status !== 200 || created.body?.data?.status !== "PROCESSING") {
+      renderResult("支付回调闭环", false, `create status=${created.body?.data?.status ?? created.response.status}`);
+      setOutput("支付回调闭环", { create: created.body });
+      return;
+    }
+    const detail = await queryTransactionByRequest(created.payload.requestId);
+    const downstreamPaymentId = detail.body?.data?.downstreamOrderId;
+    if (detail.response.status !== 200 || !downstreamPaymentId) {
+      renderResult("支付回调闭环", false, `detail failed: HTTP ${detail.response.status}`);
+      setOutput("支付回调闭环", { create: created.body, detail: detail.body });
+      return;
+    }
+    const callback = await callbackPayment(created.body.data.gatewayPaymentId, downstreamPaymentId, scenario.paymentCallbackStatus);
+    const queried = await queryPayment(created.body.data.gatewayPaymentId);
+    const ok = callback.response.status === 200 && queried.response.status === 200 && queried.body?.data?.status === scenario.paymentCallbackStatus;
+    renderResult("支付回调闭环", ok, `callback=${callback.response.status}, query=${queried.body?.data?.status}`);
+    state.latestPayment = {
+      requestId: created.payload.requestId,
+      gatewayPaymentId: created.body.data.gatewayPaymentId,
+      downstreamPaymentId,
+      status: queried.body?.data?.status
+    };
+    updateStatePanel();
+    setOutput("支付回调闭环", { create: created.body, detail: detail.body, callback: callback.body, query: queried.body });
+  }
+
+  async function runPaymentReject() {
+    const result = await createPayment({
+      requestId: scenarioRequestId("REQ-REJECT"),
+      idempotencyKey: scenarioIdempotencyKey("IDEMP-REJECT")
+    });
+    const ok = result.response.status === 422 && result.body?.code === "DOWNSTREAM_REJECTED";
+    renderResult("支付拒绝注入", ok, `HTTP ${result.response.status} / code=${result.body?.code}`);
+    setOutput("支付拒绝注入", { request: result.payload, response: result.body });
+  }
+
+  async function runPaymentTimeout() {
+    const result = await createPayment({
+      requestId: scenarioRequestId("REQ-TIMEOUT"),
+      idempotencyKey: scenarioIdempotencyKey("IDEMP-TIMEOUT")
+    });
+    const ok = result.response.status === 504 && result.body?.code === "DOWNSTREAM_TIMEOUT";
+    renderResult("支付超时注入", ok, `HTTP ${result.response.status} / code=${result.body?.code}`);
+    setOutput("支付超时注入", { request: result.payload, response: result.body });
+  }
+
+  async function runPaymentError() {
+    const result = await createPayment({
+      requestId: scenarioRequestId("REQ-ERROR"),
+      idempotencyKey: scenarioIdempotencyKey("IDEMP-ERROR")
+    });
+    const ok = result.response.status === 502 && result.body?.code === "DOWNSTREAM_SERVICE_ERROR";
+    renderResult("支付异常注入", ok, `HTTP ${result.response.status} / code=${result.body?.code}`);
+    setOutput("支付异常注入", { request: result.payload, response: result.body });
+  }
+
+  async function runRefundQueryFlow() {
+    const payment = state.latestPayment?.gatewayPaymentId ? state.latestPayment : (await runSuccess(), state.latestPayment);
+    if (!payment?.gatewayPaymentId) {
+      renderResult("退款查询闭环", false, "缺少可用支付单");
+      return;
+    }
+    const refund = await createRefund(payment.gatewayPaymentId);
+    if (refund.response.status !== 200 || !refund.body?.data?.gatewayRefundId) {
+      renderResult("退款查询闭环", false, `create failed: HTTP ${refund.response.status}`);
+      setOutput("退款查询闭环", { refundCreate: refund.body });
+      return;
+    }
+    const queried = await queryRefund(refund.body.data.gatewayRefundId);
+    const ok = queried.response.status === 200 && queried.body?.code === "SUCCESS" && queried.body?.data?.status === "SUCCEEDED";
+    renderResult("退款查询闭环", ok, `query=${queried.response.status} / status=${queried.body?.data?.status}`);
+    state.latestRefund = {
+      requestId: refund.payload.requestId,
+      gatewayRefundId: refund.body.data.gatewayRefundId,
+      downstreamRefundId: refund.body.data.downstreamRefundId,
+      status: queried.body?.data?.status
+    };
+    updateStatePanel();
+    setOutput("退款查询闭环", { refundCreate: refund.body, refundQuery: queried.body });
+  }
+
+  async function runRefundCallbackFlow() {
+    const scenario = currentScenario();
+    const payment = state.latestPayment?.gatewayPaymentId ? state.latestPayment : (await runSuccess(), state.latestPayment);
+    if (!payment?.gatewayPaymentId) {
+      renderResult("退款回调闭环", false, "缺少可用支付单");
+      return;
+    }
+    const refund = await createRefund(payment.gatewayPaymentId, { requestId: scenarioRequestId("REQ-REFUND-PROCESSING") });
+    if (refund.response.status !== 200 || refund.body?.data?.status !== "PROCESSING") {
+      renderResult("退款回调闭环", false, `create status=${refund.body?.data?.status ?? refund.response.status}`);
+      setOutput("退款回调闭环", { refundCreate: refund.body });
+      return;
+    }
+    const callback = await callbackRefund(refund.body.data.gatewayRefundId, refund.body.data.downstreamRefundId, scenario.refundCallbackStatus);
+    const queried = await queryRefund(refund.body.data.gatewayRefundId);
+    const ok = callback.response.status === 200 && queried.response.status === 200 && queried.body?.data?.status === scenario.refundCallbackStatus;
+    renderResult("退款回调闭环", ok, `callback=${callback.response.status}, query=${queried.body?.data?.status}`);
+    state.latestRefund = {
+      requestId: refund.payload.requestId,
+      gatewayRefundId: refund.body.data.gatewayRefundId,
+      downstreamRefundId: refund.body.data.downstreamRefundId,
+      status: queried.body?.data?.status
+    };
+    updateStatePanel();
+    setOutput("退款回调闭环", { refundCreate: refund.body, refundCallback: callback.body, refundQuery: queried.body });
+  }
+
+  async function runTransactionLookup() {
+    const payment = state.latestPayment?.requestId ? state.latestPayment : (await runSuccess(), state.latestPayment);
+    if (!payment?.requestId) {
+      renderResult("交易详情查询", false, "缺少可用请求号");
+      return;
+    }
+    const detail = await queryTransactionByRequest(payment.requestId);
+    const ok = detail.response.status === 200 && detail.body?.code === "SUCCESS";
+    renderResult("交易详情查询", ok, `HTTP ${detail.response.status} / bizType=${detail.body?.data?.bizType ?? "UNKNOWN"}`);
+    setOutput("交易详情查询", detail.body);
+  }
+
+  async function runAuditSearch() {
+    const auditKey = state.latestAuditKey
+        ? state.latestAuditKey.split(":")[1]
+        : state.latestPayment?.requestId ?? state.latestRefund?.requestId;
+    if (!auditKey) {
+      renderResult("交易审计检索", false, "缺少可用 requestId");
+      return;
+    }
+    const audit = await queryAuditByRequest(auditKey);
+    const ok = audit.response.status === 200 && audit.body?.code === "SUCCESS";
+    const requestLogs = audit.body?.data?.requestLogs?.length ?? 0;
+    renderResult("交易审计检索", ok, `HTTP ${audit.response.status} / logs=${requestLogs}`);
+    setOutput("交易审计检索", audit.body);
+  }
+
+  async function runAuditSummary() {
+    const result = await requestJson("/api/v1/audit/summary", {}, "审计汇总", null);
+    const ok = result.response.status === 200 && result.body?.code === "SUCCESS";
+    renderResult("审计汇总", ok, `HTTP ${result.response.status}`);
+    setOutput("审计汇总", result.body);
+  }
+
+  async function refreshGovernance() {
+    const result = await requestJson("/api/v1/governance/refresh", { method: "POST" }, "刷新治理配置", null);
+    const ok = result.response.status === 200 && result.body?.code === "SUCCESS";
+    renderResult("刷新治理配置", ok, `HTTP ${result.response.status}`);
+    setOutput("刷新治理配置", result.body);
+  }
+
+  async function runRateLimit() {
+    const config = await requestJson("/api/v1/governance/config", {}, "治理配置查询", null);
+    const permits = config.body?.data?.permitsPerMinute ?? 0;
+    const attempts = Math.max(permits + 1, 2);
+    const responses = [];
+    for (let i = 0; i < attempts; i += 1) {
+      const result = await createPayment({
+        requestId: `${scenarioRequestId("REQ-RATE")}-${i}`,
+        idempotencyKey: `${scenarioIdempotencyKey("IDEMP-RATE")}-${i}`,
+        nonce: nonce(`rate-${i}`),
+        requestTime: nowIso()
+      });
+      responses.push({ status: result.response.status, code: result.body?.code });
+      if (result.response.status === 429) {
+        break;
+      }
+    }
+    const blocked = responses.find(item => item.status === 429 && item.code === "RATE_LIMITED");
+    renderResult("治理限流验证", Boolean(blocked), `permits=${permits}, attempts=${responses.length}`, blocked ? "ok" : "warn");
+    setOutput("治理限流验证", { permitsPerMinute: permits, responses });
+  }
+
+  async function checkPrometheusMetric() {
+    const result = await requestJson("/actuator/prometheus", {}, "Prometheus 审计指标", null);
+    const text = typeof result.body === "string" ? result.body : renderJson(result.body);
+    const lines = text.split("\n").filter(line => line.includes("gateway_payment_audit_count_total"));
+    const ok = result.response.status === 200 && lines.length > 0;
+    renderResult("审计指标", ok, `HTTP ${result.response.status} / lines=${lines.length}`);
+    setOutput("审计指标", lines.join("\n") || "未找到 gateway_payment_audit_count_total");
+  }
+
+  async function runProcessingReconcile() {
+    const result = await requestJson("/api/v1/payments/reconcile/processing", { method: "POST" }, "处理中补偿", null);
+    const ok = result.response.status === 200 && result.body?.code === "SUCCESS";
+    renderResult("处理中补偿", ok, `HTTP ${result.response.status}`);
+    setOutput("处理中补偿", result.body);
+  }
+
+  async function runOutboxRetry() {
+    const result = await requestJson("/api/v1/messaging/outbox/retry", { method: "POST" }, "Outbox 重放", null);
+    const ok = result.response.status === 200 && result.body?.code === "SUCCESS";
+    renderResult("Outbox 重放", ok, `HTTP ${result.response.status}`);
+    setOutput("Outbox 重放", result.body);
+  }
+
+  async function runNotificationRetry() {
+    const result = await requestJson("/api/v1/messaging/notifications/retry", { method: "POST" }, "通知重试", null);
+    const ok = result.response.status === 200 && result.body?.code === "SUCCESS";
+    renderResult("通知重试", ok, `HTTP ${result.response.status}`);
+    setOutput("通知重试", result.body);
+  }
+
+  async function runLatestPaymentQueryShortcut() {
+    if (!(currentScenario().targetPaymentId || state.latestPayment?.gatewayPaymentId)) {
+      renderResult("最近支付查询", false, "没有可用 paymentId", "warn");
+      return;
+    }
+    const queried = await queryPayment();
+    const ok = queried.response.status === 200 && queried.body?.code === "SUCCESS";
+    renderResult("最近支付查询", ok, `HTTP ${queried.response.status} / status=${queried.body?.data?.status ?? "UNKNOWN"}`);
+    setOutput("最近支付查询", queried.body);
+  }
+
+  async function runLatestRefundQueryShortcut() {
+    if (!(currentScenario().targetRefundId || state.latestRefund?.gatewayRefundId)) {
+      renderResult("最近退款查询", false, "没有可用 refundId", "warn");
+      return;
+    }
+    const queried = await queryRefund();
+    const ok = queried.response.status === 200 && queried.body?.code === "SUCCESS";
+    renderResult("最近退款查询", ok, `HTTP ${queried.response.status} / status=${queried.body?.data?.status ?? "UNKNOWN"}`);
+    setOutput("最近退款查询", queried.body);
+  }
+
+  async function runLatestTransactionShortcut() {
+    const requestIdValue = state.latestPayment?.requestId ?? state.latestRefund?.requestId;
+    if (!requestIdValue) {
+      renderResult("最近交易详情", false, "没有可用 requestId", "warn");
+      return;
+    }
+    const detail = await queryTransactionByRequest(requestIdValue);
+    const ok = detail.response.status === 200 && detail.body?.code === "SUCCESS";
+    renderResult("最近交易详情", ok, `HTTP ${detail.response.status}`);
+    setOutput("最近交易详情", detail.body);
+  }
+
+  async function runLatestAuditShortcut() {
+    const requestIdValue = state.latestAuditKey ? state.latestAuditKey.split(":")[1] : null;
+    if (!requestIdValue) {
+      renderResult("最近审计检索", false, "没有可用 requestId", "warn");
+      return;
+    }
+    const audit = await queryAuditByRequest(requestIdValue);
+    const ok = audit.response.status === 200 && audit.body?.code === "SUCCESS";
+    renderResult("最近审计检索", ok, `HTTP ${audit.response.status}`);
+    setOutput("最近审计检索", audit.body);
+  }
+
+  async function runSuite(name, steps) {
+    results.innerHTML = "";
+    setSuiteStatus(name, "准备开始", 0, steps.length);
+    for (let i = 0; i < steps.length; i += 1) {
+      setSuiteStatus(name, steps[i].label, i + 1, steps.length);
+      await steps[i].action();
+    }
+    setSuiteStatus(name, "已完成", steps.length, steps.length);
+  }
+
+  async function runCoreSuite() {
+    await runSuite("核心验收", [
+      { label: "检查应用健康", action: checkHealth },
+      { label: "成功请求", action: runSuccess },
+      { label: "重复请求", action: runDuplicate },
+      { label: "冲突幂等", action: runConflict },
+      { label: "重放攻击", action: runReplay },
+      { label: "错误签名", action: runBadSignature },
+      { label: "支付查询闭环", action: runPaymentQueryFlow },
+      { label: "支付回调闭环", action: runPaymentCallbackFlow }
+    ]);
+  }
+
+  async function runExtendedSuite() {
+    await runSuite("扩展验收", [
+      { label: "检查应用健康", action: checkHealth },
+      { label: "成功请求", action: runSuccess },
+      { label: "支付查询闭环", action: runPaymentQueryFlow },
+      { label: "支付回调闭环", action: runPaymentCallbackFlow },
+      { label: "退款查询闭环", action: runRefundQueryFlow },
+      { label: "退款回调闭环", action: runRefundCallbackFlow },
+      { label: "交易详情查询", action: runTransactionLookup },
+      { label: "交易审计检索", action: runAuditSearch },
+      { label: "审计汇总", action: runAuditSummary },
+      { label: "Outbox 重放", action: runOutboxRetry },
+      { label: "通知重试", action: runNotificationRetry }
+    ]);
+  }
+
+  async function runReliabilitySuite() {
+    await runSuite("可靠性验收", [
+      { label: "检查应用健康", action: checkHealth },
+      { label: "支付拒绝注入", action: runPaymentReject },
+      { label: "支付超时注入", action: runPaymentTimeout },
+      { label: "支付异常注入", action: runPaymentError },
+      { label: "刷新治理配置", action: refreshGovernance },
+      { label: "治理限流验证", action: runRateLimit },
+      { label: "处理中补偿", action: runProcessingReconcile },
+      { label: "Outbox 重放", action: runOutboxRetry },
+      { label: "通知重试", action: runNotificationRetry },
+      { label: "检查审计指标", action: checkPrometheusMetric }
+    ]);
+  }
+
+  applyPreset();
+  updateStatePanel();
+</script>
+</body>
+</html>

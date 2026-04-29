@@ -1,0 +1,6 @@
+.git
+.agent
+.serena
+.m2
+.mvn/wrapper/dists
+**/target

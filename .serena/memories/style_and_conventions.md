@@ -1,0 +1,1 @@
+仓库遵循分层边界：web -> application -> domain/security/infrastructure -> common，避免反向依赖。Controller 保持轻薄，业务编排放在 application，安全验签放在 security，幂等和路由实现放在 infrastructure。金额使用 BigDecimal，时间使用 Instant，统一错误模型使用 ErrorCode + GatewayException，统一响应使用 ApiResponse。当前实现尽量避免 gateway-common 依赖 Spring，公共命令对象 PaymentCreateCommand 放在 common.payment 中供多层共享。

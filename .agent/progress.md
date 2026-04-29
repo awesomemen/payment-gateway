@@ -1,0 +1,1005 @@
+# Progress Log
+
+## 2026-04-21
+- 阅读 `AGENTS.md` 及 `docs/agents/*`，确认该仓库必须以 AGENTS 作为实现合同。
+- 核对 `docker/local-compose.yml`、`docs/application-local.yml.example`、`docs/acceptance-ui-guide.md`、`README.md`。
+- 确认当前仓库缺少 Java 多模块代码，需先从工程骨架启动开发。
+- 创建 `.agent/task_plan.md`、`.agent/findings.md`、`.agent/progress.md` 作为后续协作与验证记录文件。
+- 已将父 POM 的版本线调整为官方兼容矩阵：Spring Boot 3.5.0 + Spring Cloud 2025.0.0 + Spring Cloud Alibaba 2025.0.0.0。
+- 记录官方兼容性发现：`2025.0.x` 对 Nacos Server 的要求已提升到 3.x，当前 Docker Compose 存在版本偏差待处理。
+- 已建立 `gateway-common / gateway-api / gateway-domain / gateway-security / gateway-governance / gateway-observability / gateway-infrastructure / gateway-application / gateway-web / gateway-app` 多模块骨架。
+- 已实现统一响应/异常、Bootstrap 状态接口、支付创建入口骨架、静态验收页和 `gateway-app` Dockerfile。
+- 已修复 Maven Wrapper，`mvnw.cmd -v` 可正常解析到 Maven 3.9.9。
+- 已执行最小验证：
+  - `mvn --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-web -am test -Dtest=PaymentControllerTest -Dsurefire.failIfNoSpecifiedTests=false`
+  - `mvn --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-app -am test -Dtest=PaymentGatewayApplicationTest -Dsurefire.failIfNoSpecifiedTests=false`
+  - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-web -am test -Dtest=PaymentControllerTest -Dsurefire.failIfNoSpecifiedTests=false`
+  - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml clean package -DskipTests`
+- 已将 `docker/local-compose.yml` 的 Nacos 镜像提升到 `v3.0.3`，并同步修正 `docs/application-local.yml.example` 的 MySQL 默认宿主端口为 `3307`。
+- 追加运行态核验（2026-04-21 16:55 CST）：
+  - `docker compose -f docker/local-compose.yml ps` 显示当前容器里的 `gateway-nacos` 仍为 `nacos/nacos-server:v2.4.3`（未按最新 Compose 重建）。
+  - `docker logs --tail 120 gateway-app` 显示应用仍是旧镜像，Spring Boot 版本为 `2.7.18`。
+  - `curl http://localhost:18081/actuator/health` 返回 `UP`，但 `curl /api/v1/bootstrap/status` 与 `/api/v1/tech/status` 均为 `404`。
+  - 结论：源码层面的技术脚手架已存在，但容器运行态尚未切换到最新代码与组件版本。
+- 追加源码侧回归验证（2026-04-21 16:57 CST）：
+  - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-web -am test -Dtest=PaymentControllerTest -Dsurefire.failIfNoSpecifiedTests=false` 通过。
+  - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-app -am test -Dtest=PaymentGatewayApplicationTest -Dsurefire.failIfNoSpecifiedTests=false` 通过（启动日志显示 Spring Boot 3.5.0）。
+- 继续核验技术脚手架完善性与 Docker 运行态（2026-04-21 17:00-17:34 CST）：
+  - 按 `planning-with-files` 执行 `session-catchup.py`，同步上次会话中“源码通过、运行态漂移”的未落盘上下文。
+  - 阅读 `docker/local-compose.yml`、`gateway-app/Dockerfile`、`TechScaffoldController`、`BootstrapStatusController`、`TechScaffoldApplicationServiceImpl`、`TechConnectivityCollector`，确认代码侧已具备技术状态聚合能力。
+  - 首次 `docker compose -f docker/local-compose.yml up -d --build ... gateway-app` 失败，定位为 `gateway-app` 镜像构建阶段找不到 `/workspace/gateway-app/target/gateway-app.jar`。
+  - 修复 `gateway-app/pom.xml`：增加 `<finalName>gateway-app</finalName>` 与 `spring-boot-maven-plugin repackage` 执行，随后 `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-app -am clean package -DskipTests` 通过，`gateway-app/target/gateway-app.jar` 实际产出。
+  - 继续重建容器时，定位 `gateway-nacos` 启动失败：
+    - 先后补齐 `NACOS_AUTH_TOKEN`、`NACOS_AUTH_IDENTITY_KEY`、`NACOS_AUTH_IDENTITY_VALUE`；
+    - 将 Nacos healthcheck 从 `/nacos/actuator/health` 改为 `/nacos/`；
+    - 重新 `docker compose up -d nacos seata skywalking-oap gateway-app prometheus grafana elasticsearch logstash kibana` 后，Nacos/Seata/SkyWalking/App 依赖链恢复。
+  - 运行态验收：
+    - `curl http://localhost:18081/api/v1/bootstrap/status` 返回 `SUCCESS`，phase 为 `BOOTSTRAP`，activeProfiles 为 `docker`。
+    - `curl http://localhost:18081/api/v1/tech/status` 初次返回除 `sentinel` 外全部 `UP`。
+  - 继续排查 Sentinel：
+    - 通过 `docker logs gateway-sentinel-dashboard` 与容器内 `netstat` 确认 `bladex/sentinel-dashboard:1.8.8` 实际监听 `8858` 而非 `8080`；
+    - 修改 `docker/local-compose.yml` 宿主机映射为 `8718:8858`；
+    - 修改 `gateway-app/src/main/resources/application.yml` 中 `docker` profile 的 `spring.cloud.sentinel.transport.dashboard` 与 `gateway.tech.sentinel-dashboard.url` 为 `sentinel-dashboard:8858`；
+    - 重建 `sentinel-dashboard` 与 `gateway-app` 后，`/api/v1/tech/status` 17 项组件全部 `UP`。
+  - 补充脚手架入口验收：
+    - `curl http://localhost:18081/acceptance/index.html` 返回 200，静态页正常；
+    - 发现 `/acceptance/` 返回 500，增加 `AcceptancePageController` 将 `/acceptance` 与 `/acceptance/` 重定向到 `/acceptance/index.html`；
+    - 新增 `AcceptancePageControllerTest`，并执行
+      - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-web -am test -Dtest=AcceptancePageControllerTest,PaymentControllerTest -Dsurefire.failIfNoSpecifiedTests=false`
+      - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-app -am test -Dtest=PaymentGatewayApplicationTest -Dsurefire.failIfNoSpecifiedTests=false`
+      两条测试均通过。
+    - 重建 `gateway-app` 后，`curl http://localhost:18081/acceptance/` 返回 `302 -> /acceptance/index.html`。
+- 业务边界复验：
+  - 对完整示例体执行 `POST /api/v1/payments`，返回 `PAYMENT_CREATE_NOT_READY`，确认当前仍是技术脚手架而非业务实现。
+  - 最终运行态：
+    - `docker compose -f docker/local-compose.yml ps` 显示 `gateway-app` healthy，`mysql / redis / nacos / rocketmq / seata / skywalking-oap` healthy，其余监控日志组件已启动；
+    - `GET /api/v1/tech/status` 17 项全部 `UP`，其中 `elasticsearch=status=yellow` 为单节点开发态可接受结果。
+- 待完成功能优先级规划落盘（2026-04-21 17:40 CST）：
+  - 重新阅读 `AGENTS.project-overview`、`AGENTS.architecture-guardrails`、`README.md` 与验收指引，确认支付网关的下一阶段必须先补“安全边界”，不能直接跳到业务编排。
+  - 将待完成功能按优先级写入 `.agent/task_plan.md`：
+    - 1) 商户配置读取、验签、时间窗校验、防重放；
+    - 2) 幂等与并发控制；
+    - 3) MySQL 持久化基线；
+    - 4) 路由与应用编排；
+    - 5) Sentinel/Redis/Nacos 治理能力接入；
+    - 6) RocketMQ 异步通知与审计补偿；
+    - 7) 观测与验收自动化。
+  - 将优先级依据写入 `.agent/findings.md`，作为后续逐项实现时的排序依据。
+- 安全入口链路首个实现切片（2026-04-21 18:55-19:26 CST）：
+  - 继续按 `planning-with-files + test-driven-development + springboot-tdd` 恢复上下文，并确认第一条实现切片是 `merchant 配置读取 + 验签 + 时间窗校验 + 防重放`。
+  - 先写失败测试：
+    - 在 `gateway-security` 新增 `DefaultPaymentRequestSecurityValidatorTest`，覆盖未知商户、签名错误、请求过期、nonce 重放、合法请求；
+    - 首次执行 `.\mvnw.cmd --% ... -pl gateway-security test` 失败，原因为未带 `-am`；
+    - 改为 `-pl gateway-security -am` 后，失败原因稳定收敛到安全组件和错误码尚不存在。
+  - 最小实现安全组件：
+    - `gateway-common` 新增错误码：`MERCHANT_NOT_FOUND`、`SIGNATURE_INVALID`、`REQUEST_EXPIRED`、`REPLAY_ATTACK_DETECTED`；
+    - `gateway-security` 新增 `GatewaySecurityProperties`、`GatewaySecurityConfiguration`、`PaymentRequestSecurityValidator`、`DefaultPaymentRequestSecurityValidator`、`ReplayProtectionStore`、`InMemoryReplayProtectionStore`、`SignatureUtils`；
+    - `gateway-app/src/main/resources/application.yml` 与 `docs/application-local.yml.example` 补齐默认安全配置和样例商户 `MCH100001`。
+  - 处理中途依赖问题：
+    - `gateway-security` 初次编译失败，原因为模块未引入 Spring Boot `ConfigurationProperties` 相关依赖；
+    - 在 `gateway-security/pom.xml` 增加 `spring-boot` 依赖后，`DefaultPaymentRequestSecurityValidatorTest` 通过。
+  - 再写应用层失败测试：
+    - 新增 `BootstrapPaymentCreateApplicationServiceTest`，要求非法签名先被拒绝，合法签名仍然返回 `PAYMENT_CREATE_NOT_READY`；
+    - 首次执行失败，原因为 `BootstrapPaymentCreateApplicationService` 还未接入安全校验器构造参数。
+  - 最小实现应用层接线：
+    - `BootstrapPaymentCreateApplicationService` 改为依赖 `PaymentRequestSecurityValidator`；
+    - 在服务内部把 `PaymentCreateRequest` 转成 `PaymentCreateCommand` 后先执行安全校验，再保留原有 `NOT_READY` 边界。
+  - 测试验证：
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-application -am test -Dtest=BootstrapPaymentCreateApplicationServiceTest -Dsurefire.failIfNoSpecifiedTests=false` 通过；
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-web -am test -Dtest=PaymentControllerTest,AcceptancePageControllerTest -Dsurefire.failIfNoSpecifiedTests=false` 通过；
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-app -am test -Dtest=PaymentGatewayApplicationTest -Dsurefire.failIfNoSpecifiedTests=false` 通过。
+  - 真实运行态回归：
+    - `docker compose -f docker/local-compose.yml up -d --build gateway-app` 首次因镜像重建耗时超时，但镜像已成功产出；
+    - 随后 `docker compose -f docker/local-compose.yml up -d gateway-app` 成功拉起应用；
+    - 使用真实 HTTP 请求验证：
+      - 正确签名请求返回 `501 PAYMENT_CREATE_NOT_READY`；
+      - 错误签名请求返回 `401 SIGNATURE_INVALID`；
+      - 相同有效请求重复提交，第二次返回 `409 REPLAY_ATTACK_DETECTED`。
+- 幂等与并发控制首个实现切片（2026-04-21 21:20-22:35 CST）：
+  - 继续按 `planning-with-files + test-driven-development + springboot-tdd + springboot-patterns + java-coding-standards` 恢复上下文，并将下一切片锁定为 `幂等指纹 + Redis 幂等记录 + Redisson 锁 + 冲突返回码`。
+  - 先写失败测试：
+    - 新增 `PaymentCreateIdempotencyCoordinatorTest`，覆盖“首个请求写入结果、同语义重复返回已保存结果、同 key 不同指纹返回冲突、锁竞争返回处理中”；
+    - 更新 `BootstrapPaymentCreateApplicationServiceTest`，要求应用服务在安全校验后继续进入幂等协调器；
+    - 首次编译失败，原因是幂等协调器、仓储、锁接口与错误码尚不存在，失败面符合预期。
+  - 最小实现应用层和公共抽象：
+    - `gateway-common` 新增 `IDEMPOTENCY_CONFLICT`、`IDEMPOTENCY_IN_PROGRESS`；
+    - `PaymentCreateCommand` 新增 `idempotencyFingerprint()`；
+    - `gateway-application` 新增 `GatewayIdempotencyProperties` 与 `PaymentCreateIdempotencyCoordinator`；
+    - `BootstrapPaymentCreateApplicationService` 改为先过安全校验，再经幂等协调器执行当前 `NOT_READY` 业务占位。
+  - 为保持模块边界，调整幂等抽象归属：
+    - 将 `PaymentIdempotencyRepository / LockManager / Lock / Record / StoredPaymentResult` 从 `gateway-application` 移到 `gateway-common`；
+    - `gateway-infrastructure` 随后实现这些接口，避免基础设施层反向依赖应用层。
+  - 最小实现基础设施适配：
+    - 默认 profile：`InMemoryPaymentIdempotencyRepository`、`InMemoryPaymentIdempotencyLockManager`；
+    - `local/docker` profile：`RedisPaymentIdempotencyRepository`、`RedissonPaymentIdempotencyLockManager`；
+    - `gateway-infrastructure/pom.xml` 增加 JSON 与测试依赖；
+    - `gateway-app/src/main/resources/application.yml` 与 `docs/application-local.yml.example` 补充 `gateway.idempotency.*` 配置。
+  - 测试验证：
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-application -am test -Dtest=PaymentCreateIdempotencyCoordinatorTest,BootstrapPaymentCreateApplicationServiceTest -Dsurefire.failIfNoSpecifiedTests=false` 通过；
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-app -am test -Dtest=PaymentGatewayApplicationTest -Dsurefire.failIfNoSpecifiedTests=false` 通过；
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-web -am test -Dtest=PaymentControllerTest,AcceptancePageControllerTest -Dsurefire.failIfNoSpecifiedTests=false` 通过；
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-infrastructure -am test -Dtest=RedisPaymentIdempotencyRepositoryTest,RedissonPaymentIdempotencyLockManagerTest -Dsurefire.failIfNoSpecifiedTests=false` 通过，其中 Testcontainers 在本机 Docker 探测失败时自动跳过。
+  - Docker 构建与运行态修正：
+    - `gateway-app/Dockerfile` 的 Maven 构建命令改为 `offline + settings` 模式，避免容器内重复在线解析依赖导致构建不稳定；
+    - `docker compose -f docker/local-compose.yml up -d --build gateway-app` 之后，应用容器恢复为 healthy。
+  - 真实 HTTP 回归：
+    - 首次请求：新 `idempotencyKey` 且合法签名，返回 `501 PAYMENT_CREATE_NOT_READY`；
+    - 同业务语义重复请求，但使用新的 `nonce/requestTime`，返回 `501 PAYMENT_CREATE_NOT_READY`；
+    - 同 `idempotencyKey` 但不同 `requestId/amount`，返回 `409 IDEMPOTENCY_CONFLICT`。
+  - 重启后回归与结果落盘：
+    - 使用 `docker exec gateway-redis redis-cli` 确认 Redis 中存在 `gateway:idempotency:MCH100001:IDEMP-20260421-2001` 记录；
+    - 显式 `docker compose -f docker/local-compose.yml restart gateway-app` 后等待 `/actuator/health=UP`；
+    - 再次对同业务语义请求发起真实 HTTP 调用，返回 `501 PAYMENT_CREATE_NOT_READY`；
+    - 再次对冲突请求发起真实 HTTP 调用，返回 `409 IDEMPOTENCY_CONFLICT`；
+    - 结论：当前幂等语义已跨应用重启成立，记录承载于 Redis 而非 JVM 内存。
+
+## 2026-04-23
+- Acceptance automation is now closed at runtime level, not just code level.
+- Added resource smoke validation:
+  - `AcceptancePageResourceTest`
+  - verifies `支付查询闭环`, `支付回调闭环`, `退款查询闭环`, `退款回调闭环`, `交易详情查询`, `通知重试`, `支付超时注入`
+- Closed a real Docker runtime drift:
+  - host `gateway-app.jar` already contained the new acceptance page
+  - container `/app/app/app.jar` and HTTP `/acceptance/index.html` still served the old page
+  - old marker: `--bg: #f3efe4`
+  - new marker: `--bg: #f2ede0`
+- Final Docker fix:
+  - `gateway-app/Dockerfile` switched to a multi-stage source build
+  - builder runs `mvn --batch-mode -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-app -am package -Dmaven.test.skip=true`
+  - builder performs `jarmode=tools` extraction
+  - runtime copies only exploded output
+  - `.dockerignore` no longer re-includes `gateway-app/target`
+- Final proof:
+  - `docker compose -f docker/local-compose.yml build --no-cache gateway-app`
+  - `docker compose -f docker/local-compose.yml up -d --force-recreate gateway-app`
+  - `docker compose -f docker/local-compose.yml ps gateway-app` is `healthy`
+  - `http://localhost:18081/acceptance/index.html` now returns the new page
+  - extracting container `app.jar` confirms:
+    - `支付查询闭环`
+    - `支付回调闭环`
+    - `退款查询闭环`
+    - `通知重试`
+    - `支付超时注入`
+    - `--bg: #f2ede0`
+- 真实下游服务契约替换首个切片（2026-04-23 12:00-12:30 CST）：
+  - 支付 provider 侧已从纯前缀规则 Mock 收敛为 stateful sandbox contract：
+    - 新增 `MockDownstreamPaymentStore`
+    - `MockPaymentCreateFacadeImpl` 在 create 时保存 provider 侧状态
+    - `MockPaymentQueryFacadeImpl` 先查共享状态，再保留旧前缀注入 fallback
+  - 退款 provider 侧同步收敛：
+    - 新增 `MockDownstreamRefundStore`
+    - `MockRefundFacadeImpl` 在 refund create/query 间共享 provider 侧状态
+  - 新增 / 更新测试：
+    - `MockPaymentCreateFacadeImplTest`
+    - `MockPaymentQueryFacadeImplTest`
+    - `MockRefundFacadeImplTest`
+    - `DubboDownstreamPaymentCreateGatewayTest`
+    - `DubboDownstreamPaymentQueryGatewayTest`
+  - 定向测试通过：
+    - `cmd /c .\\mvnw.cmd -pl gateway-infrastructure -am "-Dtest=MockPaymentCreateFacadeImplTest" "-Dsurefire.failIfNoSpecifiedTests=false" -B -ntp test`
+    - `cmd /c .\\mvnw.cmd -pl gateway-infrastructure -am "-Dtest=MockPaymentQueryFacadeImplTest,DubboDownstreamPaymentCreateGatewayTest,DubboDownstreamPaymentQueryGatewayTest" "-Dsurefire.failIfNoSpecifiedTests=false" -B -ntp test`
+    - `cmd /c .\\mvnw.cmd -pl gateway-infrastructure -am "-Dtest=MockRefundFacadeImplTest" "-Dsurefire.failIfNoSpecifiedTests=false" -B -ntp test`
+    - `cmd /c .\\mvnw.cmd -pl gateway-application,gateway-app -am "-Dtest=BootstrapPaymentCreateApplicationServiceTest,BootstrapPaymentQueryApplicationServiceTest,PaymentGatewayApplicationTest" "-Dsurefire.failIfNoSpecifiedTests=false" -B -ntp test`
+  - Docker 运行态验证：
+    - 两次执行 `docker compose -f docker/local-compose.yml up -d --build gateway-app`
+    - `gateway-app` 当前恢复 `healthy`
+    - `GET /actuator/health` 返回 `UP`
+  - 真实 HTTP 支付闭环证据：
+    - 常规支付创建返回 `ACCEPTED / ROUTE_PAY_CREATE`
+    - 后续查询返回 `SUCCEEDED / ROUTE_PAY_QUERY`
+    - `REQ-PROCESSING-LIVE-*` 创建返回 `PROCESSING`
+    - 后续查询保持 `PROCESSING`
+  - 真实 HTTP 退款闭环证据：
+    - 先创建真实支付单，得到 `gatewayPaymentId`
+    - 再创建退款，返回 `ACCEPTED`
+    - 后续退款查询返回 `SUCCEEDED`
+  - 当前结论：
+    - “current Mock Dubbo downstream contracts” 的纯规则桩问题已收敛
+    - 本地下游已提升为“共享状态的 sandbox contract”
+    - 下一阶段才是把 sandbox contract 替换为真实外部下游契约，而不是继续加业务面
+- 开发验证工作台实现收口（2026-04-23 13:10-13:30 CST）：
+  - 先按 TDD 收敛页面资源契约：
+    - 更新 `AcceptancePageResourceTest`
+    - 新增断言：
+      - `开发验证工作台`
+      - `环境与诊断`
+      - `场景预置`
+      - `运行可靠性验收`
+      - `复制最新 curl`
+      - `最近证据`
+  - 替换 `gateway-app/src/main/resources/static/acceptance/index.html` 为开发验证工作台：
+    - 新增环境与诊断区
+    - 新增场景预置编辑区
+    - 新增最近证据区和复制按钮
+    - 新增 core / extended / reliability suite 状态展示
+  - 资源测试验证：
+    - `cmd /c .\\mvnw.cmd -pl gateway-app -am "-Dtest=AcceptancePageResourceTest" "-Dsurefire.failIfNoSpecifiedTests=false" -B -ntp test`
+    - 结果：`BUILD SUCCESS`
+  - 文档收敛：
+    - `docs/acceptance-ui-guide.md` 已同步描述开发验证工作台的四个区域、预置使用方式、可靠性验收与证据导出
+  - 更宽测试验证：
+    - `cmd /c .\\mvnw.cmd -pl gateway-app -am "-Dtest=AcceptancePageResourceTest,PaymentGatewayApplicationTest" "-Dsurefire.failIfNoSpecifiedTests=false" -B -ntp test`
+    - 结果：`BUILD SUCCESS`
+  - Docker 运行态收敛：
+    - `docker compose -f docker/local-compose.yml up -d --build gateway-app`
+    - `docker inspect -f "{{.State.Health.Status}}" gateway-app` 返回 `healthy`
+    - HTTP `/acceptance/index.html` 最新快照已确认包含：
+      - `开发验证工作台`
+      - `环境与诊断`
+      - `场景预置`
+      - `运行可靠性验收`
+      - `复制最新 curl`
+      - `最近证据`
+- 项目文件位置核查（2026-04-23）：
+  - 对照 `docs/agents/AGENTS.repository-layout.md` 检查根目录与模块边界
+  - 规划文件位置正常：
+    - `.agent/` 存在
+    - 根目录不存在旧 `agent/`、`task_plan.md`、`findings.md`、`progress.md`
+  - 模块主结构正常：
+    - `gateway-app / gateway-api / gateway-web / gateway-application / gateway-domain / gateway-infrastructure / gateway-security / gateway-governance / gateway-observability / gateway-common / docs / docker` 均在预期位置
+  - 发现根目录存在明显临时残留：
+    - `.tmpcmp/`
+    - `.tmpextract/`
+    - `.tmpinspect*/`
+    - `.tmpjar/`
+    - `.tmp-host-docker.err`
+    - `.tmp-host-docker.out`
+    - `BOOT-INF/`
+    - `com/`
+  - 结论：
+    - 当前“混乱”主要不是分层错放，而是根目录残留了多轮 Docker / jar 解包 / 对比探针产生的临时文件
+- 根目录残留安全审查与清理（2026-04-23）：
+  - 对下列对象执行了删除前审查：
+    - `.tmpcmp/`
+    - `.tmpextract/`
+    - `.tmpinspect/`
+    - `.tmpinspect2/`
+    - `.tmpinspect3/`
+    - `.tmpinspect4/`
+    - `.tmpjar/`
+    - `BOOT-INF/`
+    - `com/`
+    - `.tmp-host-docker.err`
+    - `.tmp-host-docker.out`
+  - 审查依据：
+    - `git ls-files` 对上述路径无返回，说明未被 Git 跟踪
+    - 仓库源码搜索未发现除 `.agent` 记录外的有效引用
+    - `BOOT-INF/lib/*.jar` 与 `com/example/...class` 明确呈现为 Spring Boot jar 解包产物
+  - 清理方式：
+    - 先用 `Resolve-Path` 校验绝对路径位于仓库根内
+    - 再使用 PowerShell `Remove-Item -LiteralPath ... -Recurse -Force`
+  - 清理后复核：
+    - 上述路径 `Test-Path=False`
+    - 根目录恢复为正式仓库结构，无临时探针/解包残留
+- 开发环境约束补充（2026-04-23）：
+  - 已在 `docs/agents/AGENTS.dev-environment.md` 新增“临时排障产物约束”
+  - 明确要求：
+    - jar 解包、docker cp、反编译、运行态比对、临时日志导出不得落在仓库根目录或正式源码目录
+    - 临时产物必须进入 `.tmp*/` 或系统临时目录，并在任务结束前清理
+    - 如需保留证据，优先写入 `docs/` 或 `.agent/`
+- 交付前文档补充（2026-04-23）：
+  - 在 `docs/` 下新增 [验收工作台操作指南](./docs/acceptance-operation-guide.md)：
+    - 面向验收人员和开发人员
+    - 重点补足“进入页面后怎么操作、推荐顺序、失败后查哪里”
+  - 更新 `docs/acceptance-ui-guide.md`：
+    - 增加对 `acceptance-operation-guide.md` 的入口链接
+  - 在 `docs/` 下新增 [最终交付前未完成事项清单](./docs/final-delivery-open-items.md)：
+    - 区分“本地 sandbox 可验”与“真实正式交付”
+    - 按 `P0 / P1 / P2` 梳理剩余事项
+- 开发人员页面验证方案规划（2026-04-23）：
+  - 基于现有 `docs/acceptance-ui-guide.md` 与 `gateway-app/src/main/resources/static/acceptance/index.html` 评估当前能力
+  - 结论是不再新开第二套页面，而是把现有 `/acceptance/index.html` 演进为“developer validation workbench”
+  - 已将方案写入 `.agent/task_plan.md` 与 `.agent/findings.md`
+  - 方案核心：
+    - 单页入口
+    - 环境状态 + 单功能验证 + 组合场景验证 + 证据诊断四区
+    - 预置场景可编辑
+    - 结果可复制、可跳转诊断
+
+## 2026-04-22
+- 按 `planning-with-files` 执行 `session-catchup.py`，确认上一轮已有 164 条未落盘上下文，主要涉及持久化、治理、Outbox、验收页增强和运行态核验。
+- 重新核对代码现实：
+  - 抽样确认 `PaymentAuditSummaryResponse`、`PaymentGovernanceConfigResponse`、`RedisPaymentGovernanceGuard`、`CompositePaymentIdempotencyRepository`、`JdbcGatewayRouteRepository`、`RocketMqPaymentOutboxPublisher` 已在仓库中存在。
+  - 统计当前测试文件共 8 个，适合直接跑全仓测试。
+- 执行全仓测试：
+  - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml test -Dsurefire.failIfNoSpecifiedTests=false`
+  - 结果通过；`gateway-app` 上下文测试通过，基础设施 Testcontainers 仍因本机 Docker 探测兼容问题在需要时自动跳过。
+- 运行态实时核验：
+  - `docker compose -f docker/local-compose.yml ps` 显示 `gateway-app / mysql / redis / nacos / rocketmq / seata / skywalking / sentinel-dashboard / prometheus / grafana / elasticsearch / logstash / kibana` 均运行，关键容器为 `healthy`。
+  - `GET /actuator/health`、`GET /api/v1/bootstrap/status`、`GET /api/v1/tech/status`、`GET /api/v1/governance/config`、`GET /api/v1/audit/summary` 均可访问。
+- 首次实时回归暴露文档与运行态问题：
+  - README 中引用了并不存在的 `PaymentCreateSkyWalkingIntegrationTest` 等测试类，判定为文档超前于事实。
+  - 初次真实支付请求返回 `500 INTERNAL_ERROR`，说明成功路径存在未记录的运行时缺陷。
+- 为定位 `500`，先补最小可观测性：
+  - 在 `gateway-web/.../GatewayExceptionHandler` 中增加 `GatewayException` 与未知异常日志输出。
+  - 重建 `gateway-app` 后重放请求，获得真实堆栈。
+- 定位根因并修复：
+  - 日志显示 `JdbcPaymentIdempotencyJournalRepository.save` 写入 `gateway_idempotency_record.request_hash` 时触发 `Data too long for column 'request_hash'`。
+  - 判断当前代码将原始业务指纹直接写入 `request_hash`，而表结构仅 `VARCHAR(128)`，属于数据库契约与实现不一致。
+  - 使用 `apply_patch` 修改 `docker/mysql/init/01-schema.sql`，将 `request_hash` 调整为 `VARCHAR(512)`。
+  - 在运行态数据库执行：
+    - `ALTER TABLE gateway_idempotency_record MODIFY request_hash VARCHAR(512) NULL`
+  - 复验 `SHOW CREATE TABLE gateway_idempotency_record`，确认列宽已变更为 `VARCHAR(512)`。
+- 修复后的真实 HTTP 验证：
+  - 成功请求：HTTP `200`，`code=SUCCESS`，`data.status=ACCEPTED`。
+  - 重复请求：两次 HTTP `200` 且 `gatewayPaymentId` 相同。
+  - 冲突幂等：HTTP `409`，`code=IDEMPOTENCY_CONFLICT`。
+  - 重放攻击：HTTP `401`，`code=REQUEST_REPLAYED`。
+  - 错误签名：HTTP `401`，`code=SIGNATURE_INVALID`。
+- 审计与治理验证：
+  - `GET /api/v1/audit/summary` 返回成功/失败请求数与异常事件数；
+  - `/actuator/prometheus` 已出现 `gateway_payment_audit_count_total{result="success"}` 与 `gateway_payment_audit_count_total{result="failure"}`；
+  - `POST /api/v1/governance/refresh` 与 `GET /api/v1/governance/config` 返回 `permitsPerMinute=60`。
+- 数据库侧验证：
+  - `gateway_request_log` 已能记录最新成功/失败请求；
+  - `gateway_exception_event` 已记录错签与重放事件；
+  - `gateway_mq_outbox` 最新记录 `send_status=1`。
+- 文档与对外状态同步：
+  - 更新 `BootstrapStatusApplicationServiceImpl`，把对外描述从“早期骨架”修正为“技术脚手架已完成、当前保持 ACCEPTED 边界”；
+  - 更新 `README.md`，删除不存在的测试类声明，改为本轮真实执行过的命令与实时运行态证据；
+  - 更新 `.agent/task_plan.md`、`.agent/findings.md`，将持久化/路由/治理/Outbox、运行态缺陷修复、文档收口标记为已完成。
+- 业务阶段优先级规划（2026-04-22）：
+  - 重新阅读 `AGENTS.project-overview.md`、`AGENTS.architecture-guardrails.md`、`docs/acceptance-ui-guide.md` 与 `README.md`，提炼“技术脚手架完成后”的业务实施顺序。
+  - 结论不再是泛化的“继续做业务”，而是明确分为：
+    - `P0` 真实支付创建编排；
+    - `P1` 支付结果闭环（回调、状态流转、查询）；
+    - `P2` 可靠性与补偿闭环；
+    - `P3` 退款业务域；
+    - `P4` 通用交易查询与运营支撑。
+  - 已将上述优先级与范围写入 `.agent/task_plan.md` 和 `.agent/findings.md`，作为后续业务开发阶段的新基线。
+- P0 首个业务切片：Mock Dubbo 下游编排（2026-04-22）：
+  - 按 `planning-with-files + test-driven-development + springboot-tdd + springboot-patterns + java-coding-standards` 恢复上下文，并将本轮目标收敛为：把支付创建从“本地 ACCEPTED 占位”改成“真实命中本地 Mock Dubbo 下游并做响应映射”。
+  - 先写失败测试：
+    - 更新 `BootstrapPaymentCreateApplicationServiceTest`，要求应用服务在安全、治理、幂等之后调用下游网关，并把 `downstreamPaymentId` 透传到 Outbox 事件；
+    - 新增 `DubboDownstreamPaymentCreateGatewayTest`，要求 Dubbo 适配器把 Facade 返回映射成下游结果，并对空响应返回 `DOWNSTREAM_EMPTY_RESPONSE`。
+  - 最小实现：
+    - `gateway-common` 新增 `DownstreamPaymentCreateGateway / Request / Result`；
+    - `gateway-api` 新增 `com.example.payment.api.PaymentCreateFacade` 及其请求/响应 DTO；
+    - `gateway-infrastructure` 新增：
+      - `InMemoryDownstreamPaymentCreateGateway`
+      - `DubboDownstreamPaymentCreateGateway`
+      - `MockPaymentCreateFacadeImpl`
+    - `BootstrapPaymentCreateApplicationService` 改为在命中 Dubbo 路由后先调用 `DownstreamPaymentCreateGateway`，再将下游响应映射成外部 `PaymentCreateResponse`；
+    - `PaymentAcceptedOutboxEvent` 与 `RocketMqPaymentOutboxPublisher` 追加 `downstreamPaymentId` 透传。
+  - 处理中途问题：
+    - 首次把 `PaymentCreateCommand` 直接放进 `gateway-common` 的调用抽象，违反模块依赖方向；
+    - 随后改为公共 `DownstreamPaymentCreateRequest`，恢复 `common` 不依赖 `domain`。
+  - 测试验证：
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-application -am test -Dtest=BootstrapPaymentCreateApplicationServiceTest -Dsurefire.failIfNoSpecifiedTests=false`
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-infrastructure -am test -Dtest=DubboDownstreamPaymentCreateGatewayTest -Dsurefire.failIfNoSpecifiedTests=false`
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-web -am test -Dtest=PaymentControllerTest,AcceptancePageControllerTest -Dsurefire.failIfNoSpecifiedTests=false`
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-app -am test -Dtest=PaymentGatewayApplicationTest -Dsurefire.failIfNoSpecifiedTests=false`
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml test -Dsurefire.failIfNoSpecifiedTests=false`
+    - 上述回归均通过；全仓测试仍保留 Testcontainers 本机 Docker 探测失败时的兼容日志，但不阻断通过。
+  - Docker 构建链路修正：
+    - `gateway-app/Dockerfile` 原先在镜像内部重新执行 `./mvnw -o ...`，触发 Maven Wrapper `zip END header not found`；
+    - 现改为直接复制宿主机已产出的 `gateway-app/target/gateway-app.jar`；
+    - 新增根级 `.dockerignore`，排除 `.m2` 等无关上下文并仅保留需要的 Jar。
+  - 运行态回归：
+    - `docker compose -f docker/local-compose.yml up -d --build gateway-app` 成功；
+    - `GET /actuator/health` 返回 `UP`；
+    - `GET /api/v1/bootstrap/status` 与 `GET /api/v1/tech/status` 返回正常；
+    - 健康详情中 `discoveryComposite` 已出现 `providers:com.example.payment.api.PaymentCreateFacade:1.0.0:`；
+    - 真实签名请求返回：
+      - HTTP `200`
+      - `code=SUCCESS`
+      - `data.status=ACCEPTED`
+      - `data.message=Payment request accepted by mock downstream facade`
+    - MySQL 验证：
+      - `gateway_request_log` 最新成功记录的 `target_service = com.example.payment.api.PaymentCreateFacade`
+      - `gateway_mq_outbox` 最新记录 `send_status=1`，且 `payload_json` 已包含 `downstreamPaymentId`
+- P0 第二个业务切片：支付单与下游流水关联持久化（2026-04-22）：
+  - 按 `planning-with-files + test-driven-development + springboot-tdd + springboot-patterns + java-coding-standards` 恢复上下文，并将本轮目标收敛为：在已有 Mock Dubbo 下游编排基础上，为支付创建成功路径补齐“网关支付单 -> 下游支付流水”的真实持久化模型。
+  - 先写失败测试：
+    - 更新 `BootstrapPaymentCreateApplicationServiceTest`，要求成功路径必须调用 `PaymentOrderRepository.save(...)`；
+    - 并断言保存记录包含：
+      - `downstreamPaymentId = DSP-20260421-0001`
+      - `routeCode = ROUTE_PAY_CREATE`
+    - 首次执行：
+      - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-application -am test -Dtest=BootstrapPaymentCreateApplicationServiceTest -Dsurefire.failIfNoSpecifiedTests=false`
+      - 因 `PaymentOrderRecord / PaymentOrderRepository` 尚不存在而失败，符合预期。
+  - 最小实现：
+    - `gateway-common` 新增：
+      - `PaymentOrderRecord`
+      - `PaymentOrderRepository`
+    - `gateway-infrastructure` 新增：
+      - `InMemoryPaymentOrderRepository`
+      - `JdbcPaymentOrderRepository`
+      - `GatewayPaymentOrderEntity`
+      - `GatewayPaymentOrderMapper`
+    - `BootstrapPaymentCreateApplicationService` 改为在下游返回成功后，将：
+      - `gatewayPaymentId`
+      - `merchantId`
+      - `requestId`
+      - `idempotencyKey`
+      - `routeCode`
+      - `targetService`
+      - `downstreamPaymentId`
+      - `paymentStatus`
+      - `amount`
+      - `currency`
+      写入支付单仓储。
+    - `docker/mysql/init/01-schema.sql` 新增 `gateway_payment_order` 表，并把后续编号注释顺延。
+  - 测试验证：
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-application -am test -Dtest=BootstrapPaymentCreateApplicationServiceTest -Dsurefire.failIfNoSpecifiedTests=false` 通过；
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-app -am test -Dtest=PaymentGatewayApplicationTest -Dsurefire.failIfNoSpecifiedTests=false` 通过；
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml test -Dsurefire.failIfNoSpecifiedTests=false` 通过。
+  - 数据库与 Docker 验收：
+    - 运行：
+      - `Get-Content docker\\mysql\\init\\01-schema.sql -Raw | docker exec -i gateway-mysql mysql -uroot -plocal_root_pass`
+    - 确认：
+      - `SHOW TABLES LIKE 'gateway_payment_order'` 返回存在；
+    - 构建：
+      - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-app -am package -DskipTests`
+    - 重建：
+      - `docker compose -f docker/local-compose.yml up -d --build gateway-app`
+    - 实时状态：
+      - `docker compose -f docker/local-compose.yml ps gateway-app` 显示容器 `healthy`
+      - `GET /actuator/health` 返回 `UP`
+  - 真实 HTTP 与数据落库验证：
+    - 使用样例商户 `MCH100001` 与 `demo-signature-key` 按验收页同一 HMAC-SHA256 规则发起真实签名请求；
+    - 返回结果：
+      - HTTP `200`
+      - `code=SUCCESS`
+      - `data.gatewayPaymentId = GP177684620500233802`
+      - `data.status = ACCEPTED`
+    - MySQL 最新 `gateway_payment_order` 记录为：
+      - `gateway_payment_id = GP177684620500233802`
+      - `merchant_id = MCH100001`
+      - `request_id = REQ-P0-1776846203785`
+      - `idempotency_key = IDEMP-P0-1776846203790`
+      - `route_code = ROUTE_PAY_CREATE`
+      - `target_service = com.example.payment.api.PaymentCreateFacade`
+      - `downstream_payment_id = DSP2222820126`
+      - `payment_status = ACCEPTED`
+      - `amount = 88.5`
+      - `currency = CNY`
+    - 同一请求在：
+      - `gateway_request_log`
+      - `gateway_mq_outbox`
+      中也已出现一致的 `requestId / gatewayPaymentId / downstreamPaymentId / targetService` 证据。
+- P0 第三个业务切片：下游失败分类与失败语义回放（2026-04-22）：
+  - 按 `planning-with-files + test-driven-development + springboot-tdd + springboot-patterns + java-coding-standards` 恢复上下文，并将本轮目标收敛为：在已有 Mock Dubbo 成功编排和支付单持久化基础上，补齐“下游拒绝/失败”的错误分类、失败幂等回放和失败路径副作用边界。
+  - 先写失败测试：
+    - `DubboDownstreamPaymentCreateGatewayTest` 新增：
+      - `REJECTED -> DOWNSTREAM_REJECTED`
+      - `FAILED -> DOWNSTREAM_FAILED`
+    - `BootstrapPaymentCreateApplicationServiceTest` 新增：
+      - 下游拒绝时不落支付单、不发 Outbox；
+    - `PaymentCreateIdempotencyCoordinatorTest` 新增：
+      - 已保存的 `DOWNSTREAM_REJECTED` 失败结果会被重复请求回放；
+    - 首次执行失败，原因为：
+      - `GatewayResponseCodes` 尚无 `DOWNSTREAM_REJECTED/DOWNSTREAM_FAILED`；
+      - Mock Dubbo 仍然只会返回 `ACCEPTED`。
+  - 最小实现：
+    - `GatewayResponseCodes` 新增：
+      - `DOWNSTREAM_REJECTED`
+      - `DOWNSTREAM_FAILED`
+    - `DubboDownstreamPaymentCreateGateway` 新增状态映射：
+      - `ACCEPTED/PROCESSING` 返回成功结果；
+      - `REJECTED` 抛 `422 DOWNSTREAM_REJECTED`；
+      - `FAILED/FAIL/ERROR` 抛 `502 DOWNSTREAM_FAILED`；
+      - 空状态仍为 `DOWNSTREAM_EMPTY_RESPONSE`；
+      - 未知状态归类为 `DOWNSTREAM_SERVICE_ERROR`。
+  - 为了支持真实运行态回归，再写测试并扩展 Mock Dubbo：
+    - `PaymentControllerTest` 新增 `422 DOWNSTREAM_REJECTED` 控制器响应断言；
+    - 新增 `MockPaymentCreateFacadeImplTest`，要求：
+      - `REQ-REJECT*` 返回 `REJECTED`
+      - `REQ-FAIL*` 返回 `FAILED`
+    - 首次编译失败是测试把 `requestTime` 写成字符串，修正为 `Instant` 后再次执行，测试正确失败；
+    - 然后修改 `MockPaymentCreateFacadeImpl`，按 `requestId` 前缀返回可控状态：
+      - `REQ-REJECT* -> REJECTED`
+      - `REQ-FAIL* -> FAILED`
+      - 其他请求保持 `ACCEPTED`
+  - 模块测试验证：
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-infrastructure -am test -Dtest=DubboDownstreamPaymentCreateGatewayTest,MockPaymentCreateFacadeImplTest -Dsurefire.failIfNoSpecifiedTests=false` 通过；
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-application -am test -Dtest=BootstrapPaymentCreateApplicationServiceTest,PaymentCreateIdempotencyCoordinatorTest -Dsurefire.failIfNoSpecifiedTests=false` 通过；
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-web -am test -Dtest=PaymentControllerTest -Dsurefire.failIfNoSpecifiedTests=false` 通过。
+  - 运行态验收中发现并修复额外缺陷：
+    - 首次真实查库发现：
+      - `gateway_request_log.target_service` 在失败请求上为 `NULL`
+    - 根因：
+      - `BootstrapPaymentCreateApplicationService.persistRequestLog(...)` 只在成功响应场景回填路由；
+    - 先补失败测试：
+      - `BootstrapPaymentCreateApplicationServiceTest` 断言下游拒绝日志也要保留 `routeCode/targetService`
+      - 首次执行失败，`routeCode = null`
+    - 最小修复：
+      - 新增 `resolveRouteForLogging(...)` 与 `isPostRoutingFailure(...)`
+      - 仅对 `UNSUPPORTED_ROUTE_PROTOCOL / DOWNSTREAM_*` 这类后路由阶段失败补齐路由信息；
+      - 安全失败、限流失败等前置失败仍不伪造路由。
+    - 修复后：
+      - `BootstrapPaymentCreateApplicationServiceTest` 再次通过。
+  - 全仓验证与打包：
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml test -Dsurefire.failIfNoSpecifiedTests=false` 通过；
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-app -am package -DskipTests` 通过。
+  - Docker 与真实 HTTP 回归：
+    - 两轮 `docker compose -f docker/local-compose.yml up -d --build gateway-app` 均通过；
+    - `/actuator/health` 返回 `UP`；
+    - 使用真实签名脚本发起：
+      - `REQ-REJECT-20260422-0002 / IDEMP-REJECT-20260422-0002`
+      - `REQ-FAIL-20260422-0002 / IDEMP-FAIL-20260422-0002`
+    - 返回结果：
+      - 首次拒绝请求：HTTP `422`，`code=DOWNSTREAM_REJECTED`
+      - 同业务语义重复拒绝请求：HTTP `422`，`code=DOWNSTREAM_REJECTED`
+      - 失败请求：HTTP `502`，`code=DOWNSTREAM_FAILED`
+  - 数据库侧证据：
+    - `gateway_request_log`：
+      - `REQ-REJECT-20260422-0002` 已落 `ROUTE_PAY_CREATE / com.example.payment.api.PaymentCreateFacade / DOWNSTREAM_REJECTED`
+      - `REQ-FAIL-20260422-0002` 已落 `ROUTE_PAY_CREATE / com.example.payment.api.PaymentCreateFacade / DOWNSTREAM_FAILED`
+    - `gateway_exception_event`：
+      - 拒绝请求 `event_level = WARN`
+      - 失败请求 `event_level = ERROR`
+    - `gateway_payment_order`：
+      - 对两条失败请求的计数为 `0`
+    - `gateway_mq_outbox`：
+      - 对两条失败请求的计数为 `0`
+  - 查询脚本过程中还纠正了一个环境脚本问题：
+    - 初次使用了不存在的旧列名 `gateway_request_log.error_code` 与 `gateway_exception_event.severity`；
+    - 改为当前真实字段 `error_message / event_level` 后完成验证。
+- P0 第四个业务切片：正式 DTO 映射与 `PROCESSING` 语义闭环（2026-04-22）：
+  - 按 `planning-with-files + test-driven-development + springboot-tdd + springboot-patterns + java-coding-standards` 恢复上下文，并将本轮目标收敛为：补齐 Dubbo 正式请求映射、处理中的业务语义，以及这条链路在 Docker 运行态上的真实证据。
+  - 先写测试：
+    - `DubboDownstreamPaymentCreateGatewayTest` 新增：
+      - `PROCESSING` 应映射为成功类结果；
+      - `routeCode/gatewayPaymentId` 等字段要进入 Dubbo Facade 请求。
+    - `MockPaymentCreateFacadeImplTest` 新增：
+      - `REQ-PROCESSING* -> PROCESSING`
+    - `BootstrapPaymentCreateApplicationServiceTest` 新增：
+      - 下游返回 `PROCESSING` 时，支付单应落 `payment_status = PROCESSING`
+  - 为减少手写 DTO 拼装，新增：
+    - `PaymentCreateFacadeMapper`
+    - `gateway-infrastructure/pom.xml` 引入 `MapStruct` 与注解处理器
+    - `DubboDownstreamPaymentCreateGateway` 改为通过 Mapper 组装 `PaymentCreateFacadeRequest`
+  - 运行态首次验收中暴露出两个真实兼容性问题：
+    - Dubbo 严格序列化白名单未包含 `PaymentCreateFacadeRequest/Response`
+    - Dubbo Hessian2 无法稳定反序列化 Java `record` DTO，日志报：
+      - `can't get field offset on a record class`
+  - 对应最小修复：
+    - `gateway-api` 中的 `PaymentCreateFacadeRequest/Response` 从 `record` 改为普通 POJO；
+    - 保留 record 风格访问方法，降低现有调用点改动；
+    - 新增：
+      - `gateway-api/src/main/resources/security/serialize.allowlist`
+      - `gateway-infrastructure/src/test/resources/security/serialize.allowlist`
+  - 这轮还顺手修了一个运行态启动缺陷：
+    - `gateway-app` 新镜像启动时报 `DubboDownstreamPaymentCreateGateway` 无默认构造器；
+    - 根因是生产注入构造器与测试构造器并存，Spring 不能唯一选择；
+    - 已通过显式标注注入构造器修复。
+  - 本轮还踩到一个构建层误区：
+    - 并行执行共享模块 Maven 任务导致 `PaymentCreateFacadeMapperImpl.java` 生成物竞争写入；
+    - 表现为编译报“非法字符”；
+    - 切回串行构建并清理 `generated-sources` 后恢复。
+  - 测试与打包验证：
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-infrastructure -am test -Dtest=PaymentCreateFacadeDtoSerializationTest,DubboDownstreamPaymentCreateGatewayTest,MockPaymentCreateFacadeImplTest -Dsurefire.failIfNoSpecifiedTests=false` 通过；
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-application -am test -Dtest=BootstrapPaymentCreateApplicationServiceTest -Dsurefire.failIfNoSpecifiedTests=false` 通过；
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml test -Dsurefire.failIfNoSpecifiedTests=false` 通过；
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-app -am package -Dmaven.test.skip=true` 通过。
+  - Docker 与真实 HTTP 回归：
+    - `docker compose -f docker/local-compose.yml build --no-cache gateway-app` 通过；
+    - `docker compose -f docker/local-compose.yml up -d gateway-app` 通过；
+    - `docker compose -f docker/local-compose.yml ps gateway-app` 显示 `healthy`；
+    - `GET /actuator/health` 返回 `UP`。
+  - 真实签名请求回归：
+    - `REQ-PROCESSING-20260422-0005 / IDEMP-PROCESSING-20260422-0005`
+    - 返回结果：
+      - HTTP `200`
+      - `code=SUCCESS`
+      - `data.gatewayPaymentId = GP177684986012858369`
+      - `data.status = PROCESSING`
+      - `message = payment is processing in mock downstream facade`
+  - MySQL 证据：
+    - `gateway_request_log`：
+      - `REQ-PROCESSING-20260422-0005 / SUCCESS / SUCCESS / ROUTE_PAY_CREATE / com.example.payment.api.PaymentCreateFacade`
+    - `gateway_payment_order`：
+      - `REQ-PROCESSING-20260422-0005 / GP177684986012858369 / DSP4049772361 / PROCESSING / ROUTE_PAY_CREATE / com.example.payment.api.PaymentCreateFacade / 88.5 / CNY`
+    - `gateway_mq_outbox`：
+      - `event_key = OUTBOX-GP177684986012858369`
+      - `send_status = 1`
+      - `payload_json.requestId = REQ-PROCESSING-20260422-0005`
+      - `payload_json.status = PROCESSING`
+- P0 第五个业务切片：下游超时与系统异常语义（2026-04-22）：
+  - 本轮先把目标收敛成：不扩业务面，只补齐 `DOWNSTREAM_TIMEOUT / DOWNSTREAM_SERVICE_ERROR` 这两个技术失败语义的代码、测试和运行态验收。
+  - 先写测试：
+    - `DubboDownstreamPaymentCreateGatewayTest`
+      - 新增 `timeout RpcException -> DOWNSTREAM_TIMEOUT`
+      - 新增普通 `RpcException -> DOWNSTREAM_SERVICE_ERROR`
+    - `MockPaymentCreateFacadeImplTest`
+      - 新增 `REQ-TIMEOUT*`
+      - 新增 `REQ-ERROR*`
+    - `BootstrapPaymentCreateApplicationServiceTest`
+      - 新增超时/服务异常都不落支付单、不发 Outbox，且失败日志保留 `routeCode/targetService`
+    - `PaymentCreateIdempotencyCoordinatorTest`
+      - 新增 `DOWNSTREAM_TIMEOUT` 失败回放
+    - `PaymentControllerTest`
+      - 新增 `504 DOWNSTREAM_TIMEOUT`
+      - 新增 `502 DOWNSTREAM_SERVICE_ERROR`
+  - 最小实现：
+    - `MockPaymentCreateFacadeImpl`
+      - `REQ-ERROR* -> RpcException("payment create failed in mock downstream facade")`
+      - 初版 `REQ-TIMEOUT* -> RpcException(TIMEOUT_EXCEPTION, ...)`
+  - 定向测试验证：
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-infrastructure -am test -Dtest=DubboDownstreamPaymentCreateGatewayTest,MockPaymentCreateFacadeImplTest -Dsurefire.failIfNoSpecifiedTests=false` 通过；
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-application -am test -Dtest=BootstrapPaymentCreateApplicationServiceTest,PaymentCreateIdempotencyCoordinatorTest -Dsurefire.failIfNoSpecifiedTests=false` 通过；
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-web -am test -Dtest=PaymentControllerTest -Dsurefire.failIfNoSpecifiedTests=false` 通过。
+  - 首次真实运行态回归：
+    - `gateway-app` 打包和 `docker compose build --no-cache gateway-app` 通过；
+    - 真实请求：
+      - `REQ-TIMEOUT-20260422-0003 / IDEMP-TIMEOUT-20260422-0003`
+      - `REQ-ERROR-20260422-0003 / IDEMP-ERROR-20260422-0003`
+    - 结果：
+      - `REQ-ERROR*` 返回 `502 DOWNSTREAM_SERVICE_ERROR`，符合预期；
+      - `REQ-TIMEOUT*` 也返回了 `502 DOWNSTREAM_SERVICE_ERROR`，不符合预期。
+  - 对上述差异的定位结论：
+    - provider 直接抛 `RpcException(TIMEOUT_EXCEPTION, ...)` 在真实 Dubbo 链路上没有稳定保留 timeout 语义；
+    - 因此把超时桩修正为“慢响应超过 3000ms consumer timeout”：
+      - `REQ-TIMEOUT* -> sleep 3500ms`
+  - 修正后再次验证：
+    - `MockPaymentCreateFacadeImplTest` 重新通过；
+    - `gateway-app` 再次 package 成功；
+    - `docker compose build gateway-app` 成功；
+  - 但在这之后，本机 Docker Desktop/WSL 引擎开始失稳，导致运行态收口被环境阻塞：
+    - Docker API 一度返回 `500 Internal Server Error`
+    - `docker version` 随后变为无法连接 `//./pipe/dockerDesktopLinuxEngine`
+    - `wsl -l -v` 显示 `docker-desktop` 仍为 `Running`
+    - `Get-Service com.docker.service` 最新状态为 `Stopped`
+    - 恢复过程中还见到过 `docker-desktop` WSL 侧 `getpwuid(0) failed`
+  - 当前归档结论：
+    - P0 第五切片代码已完成，定向测试已通过；
+    - 真实 Docker HTTP/数据库验收尚未完成；
+    - 剩余唯一阻塞点是本机 Docker Desktop/WSL 引擎恢复。
+- P0 第五个业务切片：下游超时与系统异常语义最终收口（2026-04-22）：
+  - 先恢复环境而不是继续猜测代码：
+    - `Get-Service com.docker.service` 恢复为 `Running`
+    - `docker version` 成功
+    - `docker ps` 成功
+    - `docker compose -f docker/local-compose.yml ps gateway-app` 显示 `gateway-app` 为 `healthy`
+    - `GET /actuator/health` 返回 `UP`
+  - Docker 恢复后先做真实回归，结果显示运行容器仍是旧语义：
+    - `REQ-TIMEOUT-20260422-0005` 返回 `502 DOWNSTREAM_SERVICE_ERROR`
+    - `REQ-ERROR-20260422-0005` 返回 `502 DOWNSTREAM_SERVICE_ERROR`
+    - `docker logs gateway-app` 仍可见 provider 侧直接抛 timeout 异常的旧实现痕迹
+  - 随后核对本地产物，确认问题不是源码没改，而是运行态未替换：
+    - `javap` 核对 `gateway-infrastructure/target/classes`，确认本地类已切到 `sleepForConsumerTimeout()`
+    - 解包 `gateway-app/target/gateway-app.jar` 内嵌 `gateway-infrastructure` jar，再次确认制品里也是新版本
+  - 执行重建收敛运行态：
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-infrastructure -am test -Dtest=DubboDownstreamPaymentCreateGatewayTest,MockPaymentCreateFacadeImplTest -Dsurefire.failIfNoSpecifiedTests=false`
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-app -am package -Dmaven.test.skip=true`
+    - `docker compose -f docker/local-compose.yml build --no-cache gateway-app`
+    - `docker compose -f docker/local-compose.yml up -d gateway-app`
+  - 新镜像起来后暴露出更关键的技术事实：
+    - `REQ-TIMEOUT-20260422-0006` 真实返回了 `200 SUCCESS / ACCEPTED`
+    - 说明在当前本地 Dubbo `injvm` 边界下，provider 慢响应 `sleep 3500ms` 并不会稳定触发 consumer timeout
+    - 结论：继续用“慢响应超过 3000ms”模拟超时是错误方向
+  - 最终代码修正：
+    - `MockPaymentCreateFacadeImpl` 恢复为直接抛出 `RpcException("payment create timed out in mock downstream facade")`
+    - `DubboDownstreamPaymentCreateGateway` 新增 `isTimeoutException(...)`
+    - 超时识别规则改为：
+      - `exception.isTimeout()`
+      - message 含 `timed out` / `timeout`
+      - 嵌套 cause message 含 `timed out` / `timeout`
+    - 命中则映射 `DOWNSTREAM_TIMEOUT / HTTP 504`；否则继续走 `DOWNSTREAM_SERVICE_ERROR / HTTP 502`
+  - 这轮中途还踩到一次构建干扰：
+    - 并行模块测试再次竞争写 `PaymentCreateFacadeMapperImpl.java`
+    - 已删除 `gateway-infrastructure\\target\\generated-sources\\annotations` 并改回串行执行恢复
+  - 最终验证：
+    - 定向测试通过：
+      - `DubboDownstreamPaymentCreateGatewayTest`
+      - `MockPaymentCreateFacadeImplTest`
+      - `BootstrapPaymentCreateApplicationServiceTest`
+      - `PaymentCreateIdempotencyCoordinatorTest`
+    - 全仓测试通过：
+      - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml test -Dsurefire.failIfNoSpecifiedTests=false`
+      - 虽仍有 Testcontainers 探测 Docker 的日志噪音，但退出码为 `0`
+    - Docker 重建后健康：
+      - `docker compose -f docker/local-compose.yml build --no-cache gateway-app`
+      - `docker compose -f docker/local-compose.yml up -d gateway-app`
+      - `GET /actuator/health` 返回 `UP`
+  - 真实 HTTP 最终证据：
+    - `REQ-TIMEOUT-20260422-0007 / IDEMP-TIMEOUT-20260422-0007`
+      - 首次请求：HTTP `504`，`code=DOWNSTREAM_TIMEOUT`
+      - 更换 `nonce/requestTime` 的重放请求：HTTP `504`，`code=DOWNSTREAM_TIMEOUT`
+    - `REQ-ERROR-20260422-0007 / IDEMP-ERROR-20260422-0007`
+      - 请求结果：HTTP `502`，`code=DOWNSTREAM_SERVICE_ERROR`
+  - 数据库最终证据：
+    - `gateway_request_log`
+      - timeout：`FAIL / DOWNSTREAM_TIMEOUT / ROUTE_PAY_CREATE / com.example.payment.api.PaymentCreateFacade`
+      - error：`FAIL / DOWNSTREAM_SERVICE_ERROR / ROUTE_PAY_CREATE / com.example.payment.api.PaymentCreateFacade`
+    - `gateway_exception_event`
+      - timeout：`event_level=ERROR / event_type=DOWNSTREAM_TIMEOUT / event_code=DOWNSTREAM_TIMEOUT`
+      - error：`event_level=ERROR / event_type=DOWNSTREAM_SERVICE_ERROR / event_code=DOWNSTREAM_SERVICE_ERROR`
+    - `gateway_payment_order`
+      - timeout 和 error 请求记录数都为 `0`
+    - `gateway_mq_outbox`
+      - timeout 和 error 请求记录数都为 `0`
+  - 当前结论：
+    - `P0` 第五个业务切片已完成；
+    - `P0` 前五个业务切片已全部闭合；
+    - 下一步应进入真实支付服务契约替换与正式错误码映射收口。
+- P1 支付结果闭环（2026-04-23）：
+  - 先恢复 `P1` 已实现代码的真实运行态，而不是直接继续写功能：
+    - 容器初始一直 crash，日志先后暴露出：
+      - nested-jar 模式下 `GatewayException` 类加载失败；
+      - `DubboDownstreamPaymentQueryGateway` 与 `InMemoryDownstreamPaymentQueryGateway` 双 Bean 歧义；
+      - `DubboDownstreamPaymentQueryGateway` 无默认构造器；
+      - Docker exploded 启动路径和 jar 文件名不一致。
+  - 对应最小修复：
+    - `gateway-app/Dockerfile`
+      - 改为 `jarmode=tools extract` 的 exploded 启动
+      - 修正实际工作目录为 `/app/app`
+      - 修正实际入口 jar 为 `app.jar`
+    - `DubboDownstreamPaymentQueryGateway`
+      - 增加 `@Profile({\"local\", \"docker\"})`
+      - 显式标注生产注入构造器
+  - 过程中还避免了一个构建误区：
+    - 一次并行执行 `mvn test/package` 导致 reactor 共享产物竞争，`gateway-web` 编译报“找不到 application.service 包”
+    - 已改回串行 Maven 执行并恢复稳定制品
+  - 验证：
+    - 定向测试通过：
+      - `DubboDownstreamPaymentQueryGatewayTest`
+      - `MockPaymentQueryFacadeImplTest`
+    - `PaymentGatewayApplicationTest` 通过
+    - `gateway-app` 当前恢复为 `healthy`
+    - `GET /actuator/health` 返回 `UP`
+  - 真实 HTTP 验收：
+    - 场景 A：
+      - `REQ-QUERY-20260423-0001` 创建返回 `200 / SUCCESS / ACCEPTED`
+      - `REQ-QUERY-CHECK-20260423-0001` 查询返回 `200 / SUCCESS / SUCCEEDED / ROUTE_PAY_QUERY`
+    - 场景 B：
+      - `REQ-PROCESSING-20260423-0008` 创建返回 `200 / SUCCESS / PROCESSING`
+      - 首次回调脚本因为创建响应未透出 `downstreamPaymentId` 而失败，这不是服务端逻辑错误，而是验收脚本缺少下游流水来源
+      - 通过 MySQL 查询 `gateway_payment_order` 取回 `DSP4078401515` 后，再发：
+        - `REQ-CALLBACK-20260423-0008` 回调返回 `200 / SUCCESS / SUCCEEDED`
+        - `REQ-QUERY-AFTER-CALLBACK-20260423-0008` 查询返回 `200 / SUCCESS / SUCCEEDED / ROUTE_PAY_QUERY`
+  - 数据库证据：
+    - `gateway_payment_order`
+      - `REQ-QUERY-20260423-0001 -> SUCCEEDED`
+      - `REQ-PROCESSING-20260423-0008 -> SUCCEEDED`
+    - `gateway_request_log`
+      - 查询请求已落 `api_code=QUERY / route_code=ROUTE_PAY_QUERY / target_service=com.example.payment.api.PaymentQueryFacade / response_code=SUCCESS`
+      - 回调请求已落 `api_code=CALLBACK / response_code=SUCCESS`
+    - `gateway_exception_event`
+      - 本轮成功查询/回调请求未产生异常事件
+  - 当前结论：
+    - `P1` 已完成；
+    - 下一步应进入 `P2`，优先补“处理中订单补查与补偿任务”。
+- P2 第一个业务切片：处理中订单补查 / 补偿任务（2026-04-23）：
+  - 新增补偿代码：
+    - `PaymentReconcileApplicationService`
+    - `ProcessingPaymentReconcileApplicationService`
+    - `ProcessingPaymentReconcileScheduler`
+    - `PaymentReconcileController`
+    - `GatewayReconcileProperties`
+    - `PaymentOrderRepository.findByPaymentStatus(...)`
+  - 首次编译失败：
+    - `ProcessingPaymentReconcileApplicationServiceTest` 仍按旧版 `GatewayRouteDefinition` 构造参数写法，已按当前 9 字段契约修正。
+  - 定向测试通过：
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-application -am test -Dtest=ProcessingPaymentReconcileApplicationServiceTest -Dsurefire.failIfNoSpecifiedTests=false`
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-web -am test -Dtest=PaymentReconcileControllerTest -Dsurefire.failIfNoSpecifiedTests=false`
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-app -am test -Dtest=PaymentGatewayApplicationTest -Dsurefire.failIfNoSpecifiedTests=false`
+  - 打包与 Docker：
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-app -am package -Dmaven.test.skip=true`
+    - `docker compose -f docker/local-compose.yml build --no-cache gateway-app`
+    - `docker compose -f docker/local-compose.yml up -d --force-recreate gateway-app`
+    - `GET /actuator/health` 返回 `UP`
+  - 真实验收：
+    - 使用真实签名请求创建 3 条受控支付单：
+      - `REQ-RECON-SEED-20260423-0001`
+      - `REQ-RECON-SEED-20260423-0002`
+      - `REQ-RECON-SEED-20260423-0003`
+    - 在 MySQL 中将其改写为 3 种补偿场景：
+      - `REQ-RECON-UPDATE-20260423-0001 -> PROCESSING`
+      - `REQ-PROCESSING-RECON-20260423-0001 -> PROCESSING`
+      - `REQ-ERROR-RECON-20260423-0001 -> PROCESSING`
+    - 运行态观察到：调度器已自动把 `GP177688639635910264` 纠偏为 `SUCCEEDED`
+    - 手工 `POST /api/v1/payments/reconcile/processing` 返回：
+      - `scannedCount=3`
+      - `updatedCount=0`
+      - `unchangedCount=2`
+      - `failedCount=1`
+    - 该结果与数据库一致：手工接口处理的是调度器扫过后的剩余 `PROCESSING` 集合，不是逻辑错误。
+  - 数据库证据：
+    - `gateway_payment_order`
+      - `GP177688639635910264 -> SUCCEEDED`
+      - `GP177688639646410265 -> PROCESSING`
+      - `GP177688639653910266 -> PROCESSING`
+    - `gateway_request_log`
+      - 已落 `api_code=RECONCILE / status=SUCCEEDED`
+      - 已落 `api_code=RECONCILE / status=PROCESSING`
+      - 已落 `api_code=RECONCILE / DOWNSTREAM_SERVICE_ERROR`
+    - `gateway_exception_event`
+      - 已落 `api_code=RECONCILE / event_type=DOWNSTREAM_SERVICE_ERROR`
+  - 当前结论：
+    - `P2` 首个补偿切片已完成；
+    - 下一步继续推进 `P2` 的 MQ 消费 / 重试 / 死信边界，然后再进入 `P3` 退款业务域。
+- P2 第二个业务切片：Outbox 失败重试 / 手工重放（2026-04-23）：
+  - 新增代码：
+    - `PaymentOutboxRetryApplicationService`
+    - `PaymentOutboxRetryApplicationServiceImpl`
+    - `PaymentOutboxRetryScheduler`
+    - `PaymentOutboxRetryController`
+    - `GatewayOutboxRetryProperties`
+    - `PaymentMqOutboxRecord / PaymentMqOutboxRepository / PaymentOutboxRetryExecutor`
+  - 新增测试：
+    - `PaymentOutboxRetryApplicationServiceTest`
+    - `PaymentOutboxRetryControllerTest`
+  - 定向测试通过：
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-application -am test -Dtest=PaymentOutboxRetryApplicationServiceTest -Dsurefire.failIfNoSpecifiedTests=false`
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-web -am test -Dtest=PaymentOutboxRetryControllerTest -Dsurefire.failIfNoSpecifiedTests=false`
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-app -am test -Dtest=PaymentGatewayApplicationTest -Dsurefire.failIfNoSpecifiedTests=false`
+  - 运行态第一次验收暴露两个真实问题：
+    - `/api/v1/messaging/outbox/retry` 返回 `500`，根因是旧 `gateway-web` 产物还在容器里运行，新控制器未真正进镜像；
+    - Outbox 重放成功后 `next_retry_time / last_error_message` 未清空，根因是 `updateById` 和 `set(null)` 没有按预期清列。
+  - 运行态修复过程：
+    - 使用 `clean package + docker build --no-cache`
+    - 显式删除旧 `gateway-app` 容器再 `docker compose up -d gateway-app`
+    - 通过 `docker cp` 回宿主机并反编译 `gateway-web` / `gateway-application` / `gateway-infrastructure` jar，逐步确认新字节码是否已真正进入运行镜像
+    - 最终把 Outbox 成功更新改为 `LambdaUpdateWrapper + setSql(\"... = NULL\")`
+  - 真实 Docker / RocketMQ / MySQL 验收：
+    - 先插入 2 条失败 Outbox：
+      - `OUTBOX-RETRY-SUCCESS-20260423-0001`
+      - `OUTBOX-RETRY-FAIL-20260423-0001`
+    - `POST /api/v1/messaging/outbox/retry` 返回：
+      - `scannedCount=2`
+      - `succeededCount=1`
+      - `failedCount=1`
+      - `retriedMessageKeys=[MSG-RETRY-SUCCESS-20260423-0001]`
+    - `gateway_request_log` 已出现：
+      - `api_code=RETRY / response_code=SUCCESS`
+      - `api_code=RETRY / response_code=OUTBOX_RETRY_FAILED`
+    - `gateway_exception_event` 已出现：
+      - `api_code=RETRY / event_type=OUTBOX_RETRY_FAILED`
+    - 最终字段清空修复验证：
+      - 新插 `OUTBOX-RETRY-SUCCESS-20260423-0004`
+      - 重放后数据库记录为：
+        - `send_status=1`
+        - `retry_count=1`
+        - `next_retry_time=NULL`
+        - `last_error_message=NULL`
+  - 当前结论：
+    - `P2` 第二个业务切片已完成；
+    - 当前可靠性闭环已经覆盖“处理中订单补查 + Outbox 失败重放”两条恢复链路；
+    - 后续才应继续推进 `P2` 的死信/消费侧，或转入 `P3` 退款业务域。
+- P2 第三个业务切片：通知消费 / 重试 / 死信边界运行态收口（2026-04-23）：
+  - 先做续接恢复：
+    - 按 `planning-with-files` 执行 `session-catchup.py`
+    - 根据 catchup 提示补看 `.agent/task_plan.md`
+    - 识别当前未落盘上下文主要是 `P2/P3/P4` 最新验证结果
+  - 先定位当前运行态风险，而不是继续扩业务：
+    - `docker logs gateway-app` 中存在 RocketMQ `convert failed / MessageConversionException`
+    - 根因定位到 `PaymentEventConsumer` 使用 `RocketMQListener<Message<String>>`
+    - 真实发送侧 `RocketMqPaymentOutboxPublisher` 发送的是 JSON 字符串，不需要 Spring 再次把对象反序列化成 `String`
+  - 最小修复：
+    - `PaymentEventConsumer` 改为 `RocketMQListener<MessageExt>`
+    - 从 `message.getKeys()` 读取 `messageKey`
+    - 从 `message.getBody()` 以 UTF-8 读取 payload
+  - 新增测试：
+    - `PaymentEventConsumerTest`
+      - 正常透传 key/body
+      - 无 key 时生成 `UNKNOWN-*`
+      - 非 dead-letter 失败抛出异常
+      - dead-letter 失败不抛异常
+  - 定向测试验证：
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-application -am test -Dtest=PaymentEventConsumerTest,PaymentNotificationRetryApplicationServiceTest -Dsurefire.failIfNoSpecifiedTests=false`
+    - `.\mvnw.cmd --% -q -gs .mvn/global-settings.xml -s .mvn/settings.xml -pl gateway-app -am test -Dtest=PaymentGatewayApplicationTest -Dsurefire.failIfNoSpecifiedTests=false`
+    - 两组测试均通过
+  - 运行态中途踩坑与收敛：
+    - 一次 `gateway-app` 镜像构建报 `Invalid or corrupt jarfile /app/app.jar`
+    - 根因不是 jar 真损坏，而是把 `mvn package` 与 `docker build` 并行执行，导致镜像复制到半成品 jar
+    - 已改为串行 `package -> build --no-cache -> up -d --force-recreate gateway-app`
+  - 真实 Docker 验收：
+    - `gateway-app` 当前恢复为 `healthy`
+    - `docker logs gateway-app` 当前不再出现 `convert failed / cannot convert message / MessageConversionException`
+    - `POST /api/v1/messaging/notifications/retry` 返回 `200 / SUCCESS`
+  - 真实 MQ 消费正向证据：
+    - 使用真实签名请求：
+      - `REQ-CONSUME-20260423-012304-2`
+      - 返回 `200 / SUCCESS / ACCEPTED`
+    - MySQL `gateway_message_consume_record`：
+      - `GP177690738505616849 / SUCCESS / retry_count=0 / dead_letter=0`
+    - MySQL `gateway_request_log`：
+      - `CONSUME-GP177690738505616849 / CONSUME / SUCCESS / SUCCESS`
+    - `gateway_exception_event`：
+      - 当前无新的 `api_code=CONSUME` 失败事件
+  - 当前结论：
+    - `P2` 第三个业务切片已完成；
+    - 消费侧当前已从“框架转换失败”收敛到“业务处理器正式接管”的边界。
+- P3 / P4 代码态与运行态补验（2026-04-23）：
+  - 先确认代码落地而不是依赖聊天上下文：
+    - `PaymentNotificationRetryApplicationServiceImpl`
+    - `PaymentEventConsumer`
+    - `RefundController`
+    - `RefundFacade`
+    - `TransactionController`
+    - `TransactionQueryApplicationServiceImpl`
+    - `AuditSearchApplicationServiceImpl`
+    - `docker/mysql/init/01-schema.sql` 中已存在：
+      - `gateway_message_consume_record`
+      - `gateway_refund_order`
+      - `ROUTE_REFUND_QUERY`
+  - 再跑关键测试：
+    - application：
+      - `PaymentNotificationRetryApplicationServiceTest`
+      - `BootstrapRefundCreateApplicationServiceTest`
+      - `BootstrapRefundQueryApplicationServiceTest`
+      - `BootstrapRefundCallbackApplicationServiceTest`
+      - `TransactionQueryApplicationServiceTest`
+      - `AuditSearchApplicationServiceTest`
+    - web：
+      - `PaymentNotificationRetryControllerTest`
+      - `RefundControllerTest`
+      - `TransactionControllerTest`
+    - app：
+      - `PaymentGatewayApplicationTest`
+    - 上述测试均通过
+  - Docker 接口探针：
+    - `/api/v1/refunds` 返回参数校验错误，说明控制器已进入运行镜像
+    - `/api/v1/transactions/detail` 返回 `PAYMENT_ORDER_NOT_FOUND`
+    - `/api/v1/transactions/audit` 返回 `SUCCESS` + 空集合
+    - `RefundFacade` 已在 `actuator/health` 的 discovery 信息中可见
+  - 当前结论：
+    - `P3` 与 `P4` 在当前计划内已完成代码、测试和最小运行态探针闭环。
+- 最终交付清单推进（2026-04-24）：
+  - P0 第一刀先切内部阻塞，而不是空谈真实下游：
+    - 新增 `DownstreamExternalContractWiringTest`
+    - `MockPaymentCreateFacadeImpl / MockPaymentQueryFacadeImpl / MockRefundFacadeImpl`
+    - `MockDownstreamPaymentStore / MockDownstreamRefundStore`
+    - 上述 sandbox bean 均已加 `gateway.downstream.sandbox.enabled`
+    - `DubboDownstreamPaymentCreateGateway / QueryGateway / RefundCreateGateway / RefundQueryGateway` 已去掉 `injvm=true` 强绑定
+    - 配置样例已同步：
+      - `gateway-app/src/main/resources/application.yml`
+      - `docs/application-local.yml.example`
+    - 定向测试通过：
+      - `.\mvnw.cmd -pl gateway-infrastructure -am -Dtest=DownstreamExternalContractWiringTest,MockPaymentCreateFacadeImplTest,MockPaymentQueryFacadeImplTest,MockRefundFacadeImplTest,DubboDownstreamPaymentCreateGatewayTest,DubboDownstreamPaymentQueryGatewayTest -Dsurefire.failIfNoSpecifiedTests=false -B -ntp test`
+      - `.\mvnw.cmd -pl gateway-app -am -Dtest=PaymentGatewayApplicationTest -Dsurefire.failIfNoSpecifiedTests=false -B -ntp test`
+    - 当前结论：
+      - 仓库内部已具备“关闭本地 sandbox、指向真实 provider”的切换能力
+      - 剩余未完成点已收敛为真实 provider 契约与真实环境联调
+  - P0 第二刀推进商户配置与密钥管理准备：
+    - 新增：
+      - `MerchantCredential`
+      - `MerchantCredentialProvider`
+      - `PropertiesMerchantCredentialProvider`
+    - `DefaultPaymentRequestSecurityValidator` 已改为依赖统一 provider，而不直接依赖原始 merchant map
+    - `GatewaySecurityProperties` 新增 `configSource`，并补上 refresh 边界
+    - local/docker profile 已开始导入：
+      - `optional:nacos:gateway-security.json?group=DEFAULT_GROUP&refreshEnabled=true`
+    - 新增样例：
+      - `docs/nacos/gateway-security.json.example`
+    - 定向测试通过：
+      - `.\mvnw.cmd -pl gateway-security -am -Dtest=DefaultPaymentRequestSecurityValidatorTest,PropertiesMerchantCredentialProviderTest -Dsurefire.failIfNoSpecifiedTests=false -B -ntp test`
+      - `.\mvnw.cmd -pl gateway-app -am -Dtest=PaymentGatewayApplicationTest -Dsurefire.failIfNoSpecifiedTests=false -B -ntp test`
+    - 当前结论：
+      - 仓库内的配置抽象、Nacos 接入口和动态刷新边界已闭合
+      - 真实密钥托管、轮换和灰度策略仍属于外部决策项
+  - P2 交付级文档补齐同步推进：
+    - 新增 `docs/delivery/README.md`
+    - 新增 `docs/delivery/user-acceptance-checklist.md`
+    - 新增 `docs/delivery/environment-preparation-checklist.md`
+    - 新增 `docs/delivery/configuration-inventory.md`
+    - 新增 `docs/delivery/release-rollback-guide.md`
+    - 新增 `docs/delivery/troubleshooting-guide.md`
+    - 新增 `docs/delivery/evidence-package-template.md`
+    - 新增 `docs/delivery/local-evidence-index.md`
+    - 更新 `docs/final-delivery-open-items.md`，明确已前移的仓库内切片和剩余真实交付阻塞项
+  - P1 组合故障验收继续前移：
+    - 新增 `scripts/local-reliability-suite.ps1`
+    - 新增 `docs/delivery/local-reliability-suite.md`
+    - 脚本已在当前仓库 PowerShell 会话下完成一轮真实 Docker 验证，证据目录：
+      - `.tmp-reliability/20260424-113208`
+    - 当前结果：
+      - `redis-outage => PASS`
+      - `mysql-outage => PASS`
+      - `rocketmq-broker-outage => PASS`
+      - `seata-outage => REVIEW`
+    - 关键真实结论：
+      - Redis 掉线时支付创建返回 `500 / INTERNAL_ERROR`
+      - MySQL 掉线时支付创建返回 `500 / INTERNAL_ERROR`
+      - RocketMQ Broker 掉线时支付创建仍 `200 / SUCCESS / ACCEPTED`，Outbox 进入失败态，Broker 恢复后经人工置为到期并调用重试接口可恢复为 `send_status=1`
+      - Seata 掉线时当前系统仍返回 `200 / SUCCESS`，该行为已记录为需要架构决策确认
+
+## 2026-04-29
+- 按用户要求准备将当前仓库文件纳入 Git、提交并推送。
+- 已执行 `planning-with-files` 会话恢复，确认当前 `.agent` 进度与最终交付清单状态。
+- 已检查当前分支为 `main`，远端为 `origin git@github.awesome:awesomemen/payment-gateway.git`。
+- 已检查 `.gitignore` 覆盖 `target/`、`.tmp-reliability/`、本地 Maven/npm 缓存与 `application-local.yml`。
+- 已做轻量敏感信息扫描，命中项为样例密码、环境变量默认值和源码普通变量名，未发现私钥或真实 token。
+- 已修正 `.serena/memories` 中过期的 Spring Boot 2.7 / 离线 Maven / smoke runner 描述，避免提交错误项目上下文。

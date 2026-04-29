@@ -1,0 +1,130 @@
+cluster:
+  selector: ${SW_CLUSTER:standalone}
+  standalone:
+
+core:
+  selector: ${SW_CORE:default}
+  default:
+    restHost: ${SW_CORE_REST_HOST:0.0.0.0}
+    restPort: ${SW_CORE_REST_PORT:12800}
+    restContextPath: ${SW_CORE_REST_CONTEXT_PATH:/}
+    gRPCHost: ${SW_CORE_GRPC_HOST:0.0.0.0}
+    gRPCPort: ${SW_CORE_GRPC_PORT:11800}
+    recordDataTTL: ${SW_CORE_RECORD_DATA_TTL:2}
+    metricsDataTTL: ${SW_CORE_METRICS_DATA_TTL:2}
+
+storage:
+  selector: ${SW_STORAGE:mysql}
+  mysql:
+    properties:
+      jdbcUrl: ${SW_JDBC_URL:"jdbc:mysql://mysql:3306/skywalking_db?rewriteBatchedStatements=true&allowMultiQueries=true&useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai"}
+      dataSource.user: ${SW_DATA_SOURCE_USER:skywalking}
+      dataSource.password: ${SW_DATA_SOURCE_PASSWORD:skywalking_local_pass}
+      dataSource.cachePrepStmts: ${SW_DATA_SOURCE_CACHE_PREP_STMTS:true}
+      dataSource.prepStmtCacheSize: ${SW_DATA_SOURCE_PREP_STMT_CACHE_SQL_SIZE:250}
+      dataSource.prepStmtCacheSqlLimit: ${SW_DATA_SOURCE_PREP_STMT_CACHE_SQL_LIMIT:2048}
+      dataSource.useServerPrepStmts: ${SW_DATA_SOURCE_USE_SERVER_PREP_STMTS:true}
+    metadataQueryMaxSize: ${SW_STORAGE_MYSQL_QUERY_MAX_SIZE:5000}
+    maxSizeOfBatchSql: ${SW_STORAGE_MAX_SIZE_OF_BATCH_SQL:1000}
+    asyncBatchPersistentPoolSize: ${SW_STORAGE_ASYNC_BATCH_PERSISTENT_POOL_SIZE:2}
+
+receiver-sharing-server:
+  selector: ${SW_RECEIVER_SHARING_SERVER:default}
+  default:
+
+agent-analyzer:
+  selector: ${SW_AGENT_ANALYZER:default}
+  default:
+    traceSamplingPolicySettingsFile: ${SW_TRACE_SAMPLING_POLICY_SETTINGS_FILE:trace-sampling-policy-settings.yml}
+
+log-analyzer:
+  selector: ${SW_LOG_ANALYZER:default}
+  default:
+
+event-analyzer:
+  selector: ${SW_EVENT_ANALYZER:default}
+  default:
+
+ai-pipeline:
+  selector: ${SW_AI_PIPELINE:default}
+  default:
+
+receiver-register:
+  selector: ${SW_RECEIVER_REGISTER:default}
+  default:
+
+receiver-trace:
+  selector: ${SW_RECEIVER_TRACE:default}
+  default:
+
+receiver-jvm:
+  selector: ${SW_RECEIVER_JVM:default}
+  default:
+
+receiver-log:
+  selector: ${SW_RECEIVER_LOG:default}
+  default:
+
+receiver-meter:
+  selector: ${SW_RECEIVER_METER:default}
+  default:
+
+receiver-browser:
+  selector: ${SW_RECEIVER_BROWSER:default}
+  default:
+
+receiver-profile:
+  selector: ${SW_RECEIVER_PROFILE:default}
+  default:
+
+receiver-clr:
+  selector: ${SW_RECEIVER_CLR:default}
+  default:
+
+receiver-event:
+  selector: ${SW_RECEIVER_EVENT:default}
+  default:
+
+receiver-ebpf:
+  selector: ${SW_RECEIVER_EBPF:default}
+  default:
+
+receiver-zipkin:
+  selector: ${SW_RECEIVER_ZIPKIN:default}
+  default:
+    enableHttpCollector: ${SW_ZIPKIN_HTTP_COLLECTOR_ENABLED:true}
+    restHost: ${SW_RECEIVER_ZIPKIN_REST_HOST:0.0.0.0}
+    restPort: ${SW_RECEIVER_ZIPKIN_REST_PORT:9411}
+    restContextPath: ${SW_RECEIVER_ZIPKIN_REST_CONTEXT_PATH:/}
+    sampleRate: ${SW_ZIPKIN_SAMPLE_RATE:10000}
+
+query:
+  selector: ${SW_QUERY:graphql}
+  graphql:
+    maxQueryComplexity: ${SW_QUERY_MAX_QUERY_COMPLEXITY:3000}
+
+query-zipkin:
+  selector: ${SW_QUERY_ZIPKIN:default}
+  default:
+    restHost: ${SW_QUERY_ZIPKIN_REST_HOST:0.0.0.0}
+    restPort: ${SW_QUERY_ZIPKIN_REST_PORT:9412}
+    restContextPath: ${SW_QUERY_ZIPKIN_REST_CONTEXT_PATH:/zipkin}
+    lookback: ${SW_QUERY_ZIPKIN_LOOKBACK:86400000}
+    namesMaxAge: ${SW_QUERY_ZIPKIN_NAMES_MAX_AGE:300}
+
+alarm:
+  selector: ${SW_ALARM:default}
+  default:
+
+telemetry:
+  selector: ${SW_TELEMETRY:none}
+  none:
+
+configuration:
+  selector: ${SW_CONFIGURATION:none}
+  none:
+
+health-checker:
+  selector: ${SW_HEALTH_CHECKER:default}
+  default:
+    checkIntervalSeconds: ${SW_HEALTH_CHECKER_INTERVAL_SECONDS:5}

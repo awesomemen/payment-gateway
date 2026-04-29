@@ -1,0 +1,15 @@
+{
+  "gateway": {
+    "security": {
+      "config-source": "nacos:gateway-security.json",
+      "request-expire-seconds": 300,
+      "replay-protect-seconds": 300,
+      "merchants": {
+        "MCH100001": {
+          "enabled": true,
+          "signature-key": "demo-signature-key"
+        }
+      }
+    }
+  }
+}
